@@ -22,3 +22,4 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #000; font-f
 #touch button { width: 76px; height: 76px; border-radius: 50%; border: 2px solid rgba(255,255,255,.5); background: rgba(0,0,0,.3); color: #fff; font: inherit; font-size: 16px; font-weight: 700; }
 #touch button.active { background: rgba(255,181,71,.55); }
 @media (pointer: coarse) { #touch { display: flex; } }
+#mute { position: absolute; right: 16px; top: 58px; pointer-events: auto; font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,.4); background: rgba(0,0,0,.25); color: #fff; cursor: pointer; }

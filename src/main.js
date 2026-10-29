@@ -5,6 +5,8 @@ import { createObstacles } from './world/obstacles.js';
 import { createTerrain } from './world/terrain.js';
 import { buildWorld } from './render/world.js';
 import { createRiderModel } from './render/rider.js';
+import { createDust } from './render/dust.js';
+import { createAudio } from './audio.js';
 
 const CRASH_PENALTY = 3;
 const RESPAWN_DELAY = 1.6;
@@ -26,6 +28,8 @@ const obstacles = createObstacles(terrain);
 const world = buildWorld(scene, renderer, terrain, obstacles);
 const model = createRiderModel();
 scene.add(model.root);
+const dust = createDust(scene);
+const audio = createAudio();
 
 const ui = {
   speed: document.getElementById('speed'),
@@ -36,7 +40,10 @@ const ui = {
   title: document.getElementById('overlay-title'),
   body: document.getElementById('overlay-body'),
   button: document.getElementById('overlay-button'),
+  mute: document.getElementById('mute'),
 };
+ui.mute.textContent = audio.muted ? 'Sound off' : 'Sound on';
+ui.mute.addEventListener('click', () => { ui.mute.textContent = audio.toggleMute() ? 'Sound off' : 'Sound on'; ui.mute.blur(); });
 
 const keys = { left: false, right: false, throttle: false, brake: false };
 const KEYMAP = {
@@ -47,6 +54,7 @@ window.addEventListener('keydown', (e) => {
   if (KEYMAP[e.code]) { keys[KEYMAP[e.code]] = true; e.preventDefault(); }
   if (e.code === 'Enter' && game.mode !== 'riding') start();
   if (e.code === 'KeyR' && game.mode === 'riding') respawn(true);
+  if (e.code === 'KeyM') ui.mute.click();
 });
 window.addEventListener('keyup', (e) => { if (KEYMAP[e.code]) keys[KEYMAP[e.code]] = false; });
 window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
@@ -75,6 +83,7 @@ const game = {
   checkpoint: -1,
   crashTimer: 0,
   maxSpeed: 0,
+  airTime: 0,
   best: Number(localStorage.getItem('downhill-best')) || null,
 };
 
@@ -95,6 +104,8 @@ function startPose() {
 }
 
 function start() {
+  audio.unlock();
+  audio.event('start');
   const p = startPose();
   placeBike(p.x, p.z, p.heading, 0);
   game.mode = 'riding';
@@ -149,19 +160,28 @@ function simulate(input) {
     return;
   }
   if (game.mode !== 'riding') return;
+  const wasAir = b.airborne;
   stepBike(b, input, terrain, obstacles, DT);
   game.time += DT;
+  if (b.airborne) game.airTime += DT;
+  if (wasAir && !b.airborne && !b.crashed) {
+    audio.event('land');
+    if (game.airTime > 0.7) { audio.event('big-air'); flash('Big air', 800); }
+  }
+  if (!b.airborne) game.airTime = 0;
   game.maxSpeed = Math.max(game.maxSpeed, b.v);
   const s = -b.z;
   const next = terrain.checkpoints[game.checkpoint + 1];
   if (next && s >= next.s) {
     game.checkpoint += 1;
     flash(`Checkpoint ${game.checkpoint + 1}`, 900);
+    audio.event('checkpoint');
   }
   if (b.crashed) {
     game.mode = 'crashed';
     game.penalty += CRASH_PENALTY;
     game.crashTimer = RESPAWN_DELAY;
+    audio.event('crash');
     flash(`${CRASH_TEXT[b.crashed] || 'Crashed'}  +${CRASH_PENALTY}s`, 1500);
   } else if (b.z <= terrain.finishZ) {
     game.mode = 'finished';
@@ -171,6 +191,8 @@ function simulate(input) {
       game.best = total;
       localStorage.setItem('downhill-best', String(total));
     }
+    audio.event('finish');
+    if (isBest) audio.event('best');
     showOverlay(
       isBest ? 'New best' : 'Finished',
       `${total.toFixed(2)} s  (penalties ${game.penalty} s)  top ${Math.round(game.maxSpeed * 3.6)} km/h  best ${game.best.toFixed(2)} s`,
@@ -262,6 +284,8 @@ function frame(now) {
   model.root.position.set(render.x, render.y, render.z);
   model.update({ ...game.bike, heading: render.heading, lean: render.lean }, game.mode === 'riding' ? input : {}, gradeAt(game.bike), dt);
   world.followSun(model.root.position);
+  dust.update(game.bike, game.mode === 'riding', dt);
+  audio.update(game.bike, input, game.mode === 'riding', dt);
   updateCamera(dt);
   updateHud();
   renderer.render(scene, camera);
