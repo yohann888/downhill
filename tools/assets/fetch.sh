@@ -11,17 +11,25 @@ modal volume get downhill-assets raw "$ROOT/tools/assets" --force
 
 while IFS= read -r -d '' model; do
   filename="$(basename "$model")"
-  name="${filename%.glb}"
-  if [[ ! "$name" =~ ^[a-z0-9-]+$ ]]; then
+  source_name="${filename%.glb}"
+  if [[ ! "$source_name" =~ ^[a-z0-9-]+$ ]]; then
     printf 'Invalid model filename: %s\n' "$filename" >&2
     exit 1
   fi
 
+  if [[ "$filename" == "rider.glb" && -f "$RAW_DIR/models/rider-rigged.glb" ]]; then
+    printf 'Skipping unrigged rider.glb; rider-rigged.glb will be published as rider.glb\n'
+    continue
+  fi
+  name="$source_name"
+  if [[ "$filename" == "rider-rigged.glb" ]]; then
+    name="rider"
+  fi
   texture_size=1024
-  if [[ "$name" =~ (pine|tree|rock|boulder) ]]; then
+  if [[ "$name" =~ (pine|tree|rock|boulder|stump|log) ]]; then
     texture_size=512
   fi
-  output="$MODEL_DIR/$filename"
+  output="$MODEL_DIR/$name.glb"
   before="$(wc -c < "$model")"
   (
     cd "$ROOT"
