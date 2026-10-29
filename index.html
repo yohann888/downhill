@@ -2,11 +2,38 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
     <title>Downhill</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="./src/style.css" />
   </head>
   <body>
     <canvas id="game"></canvas>
-    <script type="module" src="/src/main.js"></script>
+    <div id="hud">
+      <div class="hud-top">
+        <div class="stat"><span id="speed">0</span><small>km/h</small></div>
+        <div class="progress"><div id="progress-fill"></div></div>
+        <div class="stat"><span id="timer">0.00</span><small>s</small></div>
+      </div>
+      <div id="flash"></div>
+    </div>
+    <div id="overlay">
+      <div class="panel">
+        <h1 id="overlay-title">Downhill</h1>
+        <p id="overlay-body">W / Up: pedal &nbsp; S / Down: brake &nbsp; A D / Left Right: steer</p>
+        <button id="overlay-button" type="button">Ride</button>
+      </div>
+    </div>
+    <div id="touch">
+      <div class="touch-group">
+        <button data-key="left" type="button" aria-label="Steer left">&#9664;</button>
+        <button data-key="right" type="button" aria-label="Steer right">&#9654;</button>
+      </div>
+      <div class="touch-group">
+        <button data-key="brake" type="button">Brake</button>
+        <button data-key="throttle" type="button">Pedal</button>
+      </div>
+    </div>
+    <script type="module" src="./src/main.js"></script>
   </body>
 </html>

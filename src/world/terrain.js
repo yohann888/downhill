@@ -10,6 +10,13 @@ const smoothstep = (edge0, edge1, value) => {
   return t * t * (3 - 2 * t);
 };
 
+// Mountainside traverse: uphill wall on the left (-x), berm then drop-off on the right (+x).
+export function crossProfile(d, hw) {
+  const u = Math.max(0, Math.abs(d) - hw);
+  if (d < 0) return 0.12 * Math.min(u, 5) ** 2 + 0.45 * Math.max(0, u - 5);
+  return 0.12 * Math.min(u, 2) ** 2 - 0.3 * Math.max(0, u - 2);
+}
+
 export function createTerrain(seed = 1) {
   const trailNoise = createValueNoise(seed);
   const mountainNoise = createValueNoise(seed ^ 0x9e3779b9);
@@ -84,9 +91,9 @@ export function createTerrain(seed = 1) {
       height += trailNoise(x / 3, z / 3) * 0.08;
     } else {
       const distanceOutside = Math.abs(d) - hw;
-      const mountainAmplitude = Math.min(8, Math.max(0, Math.abs(d) - hw) * 0.14);
+      const mountainAmplitude = Math.min(8, distanceOutside * 0.14);
       height +=
-        distanceOutside * distanceOutside * 0.12 +
+        crossProfile(d, hw) +
         mountainNoise(x / 18, z / 18) * mountainAmplitude;
     }
     return height;

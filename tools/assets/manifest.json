@@ -1,0 +1,40 @@
+{
+  "models": [
+    { "name": "rider", "prompt": "full-body downhill mountain bike rider, full-face helmet with goggles, teal and charcoal long-sleeve jersey, black baggy riding shorts, knee pads, gloves, flat shoes, athletic build, standing in T-pose with arms straight out", "polycount": 12000, "rig": true },
+    { "name": "bike-frame", "prompt": "full-suspension downhill mountain bike without wheels: frame, rear shock, front suspension fork, wide handlebars, saddle, cranks and flat pedals; bright orange frame with black components", "polycount": 8000 },
+    { "name": "bike-wheel", "prompt": "single 29 inch mountain bike wheel, black knobby tire, black rim and spokes, center hub, front view", "polycount": 3000 },
+    { "name": "boulder", "prompt": "large weathered granite boulder with patches of lichen", "polycount": 2000 },
+    { "name": "rock-flat", "prompt": "low flat mossy rock embedded in a dirt trail", "polycount": 1500 },
+    { "name": "stump", "prompt": "cut pine tree stump with exposed roots, tree rings visible on the flat top", "polycount": 2000 },
+    { "name": "log", "prompt": "fallen pine log lying horizontally, rough bark, sawn ends", "polycount": 2000 },
+    { "name": "pine-a", "prompt": "tall alpine pine tree, dense dark green needles, straight trunk", "polycount": 3000 },
+    { "name": "pine-b", "prompt": "young fir tree, conical shape, lighter green needles", "polycount": 2500 }
+  ],
+  "sfx": [
+    { "name": "tire-gravel-loop", "prompt": "mountain bike tires rolling fast on a dry gravel trail, continuous, no wind", "seconds": 6, "loop": true },
+    { "name": "wind-loop", "prompt": "strong wind rushing past a helmet at high speed, continuous", "seconds": 6, "loop": true },
+    { "name": "brake-skid", "prompt": "mountain bike rear tire skidding on loose dirt with a short disc brake squeal", "seconds": 2 },
+    { "name": "freewheel-loop", "prompt": "bicycle freewheel hub ticking while coasting", "seconds": 3, "loop": true },
+    { "name": "pedal-loop", "prompt": "bicycle chain and drivetrain whirr while pedaling hard", "seconds": 3, "loop": true },
+    { "name": "crash", "prompt": "mountain biker crash, body and bike tumbling on dirt and rocks", "seconds": 2.5 },
+    { "name": "land", "prompt": "mountain bike landing a jump on packed dirt, suspension thud", "seconds": 1 },
+    { "name": "checkpoint", "prompt": "short bright ding, video game checkpoint chime", "seconds": 1 },
+    { "name": "finish-cheer", "prompt": "small crowd cheering with cowbells at a mountain bike race finish line", "seconds": 4 },
+    { "name": "forest-loop", "prompt": "alpine forest ambience, distant birds, light breeze in pine trees", "seconds": 10, "loop": true }
+  ],
+  "music": [
+    { "name": "music-ride", "prompt": "energetic instrumental indie rock for an action sports video, driving drums, bright electric guitars, no vocals", "seconds": 90 }
+  ],
+  "voice": {
+    "style": "energetic male sports commentator",
+    "lines": [
+      { "name": "vo-go", "text": "Let's go!" },
+      { "name": "vo-clean", "text": "Clean line!" },
+      { "name": "vo-air", "text": "Big air!" },
+      { "name": "vo-crash", "text": "Ooh, that's gotta hurt." },
+      { "name": "vo-checkpoint", "text": "Checkpoint!" },
+      { "name": "vo-best", "text": "New personal best!" },
+      { "name": "vo-send", "text": "Send it!" }
+    ]
+  }
+}

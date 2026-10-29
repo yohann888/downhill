@@ -1,0 +1,24 @@
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #000; font-family: system-ui, -apple-system, Segoe UI, sans-serif; color: #fff; touch-action: none; user-select: none; -webkit-user-select: none; }
+#game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+#hud { position: fixed; inset: 0; pointer-events: none; }
+.hud-top { position: absolute; top: 14px; left: 16px; right: 16px; display: flex; align-items: center; gap: 16px; }
+.stat { min-width: 92px; font-variant-numeric: tabular-nums; text-shadow: 0 1px 4px rgba(0,0,0,.6); }
+.stat span { font-size: 30px; font-weight: 700; }
+.stat small { margin-left: 4px; font-size: 13px; opacity: .8; }
+.hud-top .stat:last-child { text-align: right; }
+.progress { flex: 1; height: 6px; border-radius: 3px; background: rgba(255,255,255,.25); overflow: hidden; }
+#progress-fill { height: 100%; width: 0; background: #ffb547; }
+#flash { position: absolute; top: 30%; width: 100%; text-align: center; font-size: 34px; font-weight: 800; letter-spacing: .04em; text-shadow: 0 2px 10px rgba(0,0,0,.6); opacity: 0; transition: opacity .25s; }
+#flash.show { opacity: 1; }
+#overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.35); }
+#overlay.hidden { display: none; }
+.panel { text-align: center; padding: 28px 36px; border-radius: 14px; background: rgba(10,14,20,.72); max-width: 92vw; }
+.panel h1 { margin: 0 0 10px; font-size: 40px; letter-spacing: .02em; }
+.panel p { margin: 0 0 18px; opacity: .85; line-height: 1.5; }
+.panel button { font: inherit; font-size: 18px; font-weight: 700; padding: 10px 34px; border: 0; border-radius: 8px; background: #ffb547; color: #1a1206; cursor: pointer; }
+#touch { position: fixed; left: 0; right: 0; bottom: 18px; display: none; justify-content: space-between; padding: 0 18px; }
+.touch-group { display: flex; gap: 12px; }
+#touch button { width: 76px; height: 76px; border-radius: 50%; border: 2px solid rgba(255,255,255,.5); background: rgba(0,0,0,.3); color: #fff; font: inherit; font-size: 16px; font-weight: 700; }
+#touch button.active { background: rgba(255,181,71,.55); }
+@media (pointer: coarse) { #touch { display: flex; } }
