@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Sky } from 'three/examples/jsm/objects/Sky.js';
 import { createRandom, createValueNoise } from '../world/noise.js';
 import { crossProfile } from '../world/terrain.js';
+import { unitMesh } from './assets.js';
 
 const smoothstep = (a, b, v) => {
   const t = Math.min(1, Math.max(0, (v - a) / (b - a)));
@@ -226,6 +227,27 @@ function buildTrees(terrain, obstacles) {
   foliage.receiveShadow = true;
   const group = new THREE.Group();
   group.add(trunks, foliage);
+  const yaw = placements.map(() => random() * Math.PI * 2);
+  group.userData.swap = (variants) => {
+    const usable = variants.filter(Boolean);
+    if (!usable.length) return;
+    trunks.visible = false;
+    foliage.visible = false;
+    usable.forEach((variant, v) => {
+      const mine = placements.filter((_, i) => i % usable.length === v);
+      const mesh = new THREE.InstancedMesh(variant.geometry, variant.material, mine.length);
+      mine.forEach((tree, i) => {
+        position.set(tree.x, terrain.heightAt(tree.x, tree.z) - 0.15, tree.z);
+        quat.setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw[i]);
+        scale.setScalar(tree.scale * 9);
+        matrix.compose(position, quat, scale);
+        mesh.setMatrixAt(i, matrix);
+      });
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      group.add(mesh);
+    });
+  };
   return group;
 }
 
@@ -256,8 +278,30 @@ function buildObstacles(terrain, obstacles) {
     }
     mesh.castShadow = true;
     mesh.receiveShadow = true;
+    mesh.userData.obstacle = o;
     group.add(mesh);
   }
+  group.userData.swap = (byType) => {
+    for (const mesh of group.children) {
+      const o = mesh.userData.obstacle;
+      const model = byType[o.type];
+      if (!model) continue;
+      const ground = terrain.heightAt(o.x, o.z);
+      mesh.geometry = model.geometry;
+      mesh.material = model.material;
+      mesh.rotation.set(0, o.rot, 0);
+      if (o.type === 'log') {
+        const length = Math.hypot(o.x2 - o.x1, o.z2 - o.z1) + 0.3;
+        const ext = model.geometry.boundingBox.getSize(new THREE.Vector3());
+        mesh.rotation.y = -Math.atan2(o.z2 - o.z1, o.x2 - o.x1) + (ext.x >= ext.z ? 0 : Math.PI / 2);
+        mesh.scale.setScalar(length);
+        mesh.position.set(o.x, ground - 0.05, o.z);
+      } else {
+        mesh.scale.set(o.r * 2.1, o.h * 1.15, o.r * 2.1);
+        mesh.position.set(o.x, ground - 0.1, o.z);
+      }
+    }
+  };
   return group;
 }
 
@@ -336,11 +380,19 @@ export function buildWorld(scene, renderer, terrain, obstacles) {
 
   scene.add(buildCourseMesh(terrain));
   scene.add(buildRangeMesh(terrain));
-  scene.add(buildTrees(terrain, obstacles));
-  scene.add(buildObstacles(terrain, obstacles));
+  const trees = buildTrees(terrain, obstacles);
+  const obstacleGroup = buildObstacles(terrain, obstacles);
+  scene.add(trees, obstacleGroup);
   scene.add(buildMarkers(terrain));
 
   return {
+    applyModels(models) {
+      const pick = (name, axis) => (models[name] ? unitMesh(models[name], axis) : null);
+      trees.userData.swap([pick('pine-a', 'y'), pick('pine-b', 'y')]);
+      const rock = pick('boulder', 'xz');
+      if (rock) rock.geometry.scale(1, 1 / Math.max(0.01, rock.geometry.boundingBox.max.y), 1);
+      obstacleGroup.userData.swap({ rock, stump: pick('stump', 'xz'), log: pick('log', 'xz') });
+    },
     followSun(target) {
       sun.target.position.copy(target);
       sun.position.copy(target).addScaledVector(SUN_DIRECTION, 200);

@@ -7,6 +7,7 @@ import { buildWorld } from './render/world.js';
 import { createRiderModel } from './render/rider.js';
 import { createDust } from './render/dust.js';
 import { createAudio } from './audio.js';
+import { loadModels } from './render/assets.js';
 
 const CRASH_PENALTY = 3;
 const RESPAWN_DELAY = 1.6;
@@ -302,6 +303,7 @@ const p = startPose();
 placeBike(p.x, p.z, p.heading, 0);
 snapCamera();
 window.__game = game;
+loadModels(['boulder', 'stump', 'log', 'pine-a', 'pine-b']).then((models) => world.applyModels(models));
 window.__terrain = terrain;
 window.__camera = camera;
 window.__scene = scene;
