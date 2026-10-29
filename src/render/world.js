@@ -213,7 +213,7 @@ function buildTrees(terrain, obstacles) {
   const position = new THREE.Vector3();
   const color = new THREE.Color();
   placements.forEach((tree, i) => {
-    position.set(tree.x, terrain.heightAt(tree.x, tree.z) - 0.1, tree.z);
+    position.set(tree.x, terrain.heightAt(tree.x, tree.z), tree.z);
     quat.setFromAxisAngle(new THREE.Vector3(0, 1, 0), random() * Math.PI * 2);
     scale.setScalar(tree.scale);
     matrix.compose(position, quat, scale);
@@ -237,9 +237,9 @@ function buildTrees(terrain, obstacles) {
       const mine = placements.filter((_, i) => i % usable.length === v);
       const mesh = new THREE.InstancedMesh(variant.geometry, variant.material, mine.length);
       mine.forEach((tree, i) => {
-        position.set(tree.x, terrain.heightAt(tree.x, tree.z) - 0.15, tree.z);
+        position.set(tree.x, terrain.heightAt(tree.x, tree.z), tree.z);
         quat.setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw[i]);
-        scale.setScalar(tree.scale * 9);
+        scale.setScalar(10);
         matrix.compose(position, quat, scale);
         mesh.setMatrixAt(i, matrix);
       });
@@ -284,7 +284,9 @@ function buildObstacles(terrain, obstacles) {
   group.userData.swap = (byType) => {
     for (const mesh of group.children) {
       const o = mesh.userData.obstacle;
-      const model = byType[o.type];
+      const model = o.type === 'rock'
+        ? (o.h < 0.55 ? byType['rock-flat'] : byType.boulder)
+        : byType[o.type];
       if (!model) continue;
       const ground = terrain.heightAt(o.x, o.z);
       mesh.geometry = model.geometry;
@@ -293,12 +295,19 @@ function buildObstacles(terrain, obstacles) {
       if (o.type === 'log') {
         const length = Math.hypot(o.x2 - o.x1, o.z2 - o.z1) + 0.3;
         const ext = model.geometry.boundingBox.getSize(new THREE.Vector3());
-        mesh.rotation.y = -Math.atan2(o.z2 - o.z1, o.x2 - o.x1) + (ext.x >= ext.z ? 0 : Math.PI / 2);
-        mesh.scale.setScalar(length);
-        mesh.position.set(o.x, ground - 0.05, o.z);
+        const longOnX = ext.x >= ext.z;
+        const width = o.r * 2;
+        mesh.rotation.y = -Math.atan2(o.z2 - o.z1, o.x2 - o.x1) + (longOnX ? 0 : Math.PI / 2);
+        mesh.scale.set(
+          longOnX ? length / ext.x : width / ext.x,
+          o.h / ext.y,
+          longOnX ? width / ext.z : length / ext.z,
+        );
+        mesh.position.set(o.x, ground, o.z);
       } else {
-        mesh.scale.set(o.r * 2.1, o.h * 1.15, o.r * 2.1);
-        mesh.position.set(o.x, ground - 0.1, o.z);
+        const ext = model.geometry.boundingBox.getSize(new THREE.Vector3());
+        mesh.scale.set((o.r * 2) / ext.x, o.h / ext.y, (o.r * 2) / ext.z);
+        mesh.position.set(o.x, ground, o.z);
       }
     }
   };
@@ -390,8 +399,12 @@ export function buildWorld(scene, renderer, terrain, obstacles) {
       const pick = (name, axis) => (models[name] ? unitMesh(models[name], axis) : null);
       trees.userData.swap([pick('pine-a', 'y'), pick('pine-b', 'y')]);
       const rock = pick('boulder', 'xz');
-      if (rock) rock.geometry.scale(1, 1 / Math.max(0.01, rock.geometry.boundingBox.max.y), 1);
-      obstacleGroup.userData.swap({ rock, stump: pick('stump', 'xz'), log: pick('log', 'xz') });
+      obstacleGroup.userData.swap({
+        boulder: rock,
+        'rock-flat': pick('rock-flat', 'xz'),
+        stump: pick('stump', 'xz'),
+        log: pick('log', 'xz'),
+      });
     },
     followSun(target) {
       sun.target.position.copy(target);

@@ -6,10 +6,13 @@ export function createAudio() {
   let ctx = null;
   let master = null;
   let musicGain = null;
+  let voiceSource = null;
   const buffers = {};
   const loops = {};
   let muted = localStorage.getItem('downhill-muted') === '1';
-  let lastVoice = 0;
+  let volume = Number(localStorage.getItem('downhill-volume'));
+  if (!Number.isFinite(volume)) volume = 0.8;
+  volume = Math.min(1, Math.max(0, volume));
   let skidCooldown = 0;
 
   async function load(name) {
@@ -54,13 +57,32 @@ export function createAudio() {
     source.start();
   }
 
+  function playVoice(name) {
+    const buffer = buffers[name];
+    if (!ctx || !buffer) return;
+    if (voiceSource) {
+      try { voiceSource.stop(); } catch { /* already ended */ }
+    }
+    const source = ctx.createBufferSource();
+    voiceSource = source;
+    source.buffer = buffer;
+    const gain = ctx.createGain();
+    gain.gain.value = 0.9;
+    source.connect(gain).connect(master);
+    source.addEventListener('ended', () => {
+      if (voiceSource === source) voiceSource = null;
+    }, { once: true });
+    source.start();
+  }
+
   return {
     get muted() { return muted; },
+    get volume() { return volume; },
     async unlock() {
       if (ctx) { if (ctx.state === 'suspended') await ctx.resume(); return; }
       ctx = new AudioContext();
       master = ctx.createGain();
-      master.gain.value = muted ? 0 : 0.9;
+      master.gain.value = muted ? 0 : volume;
       master.connect(ctx.destination);
       await Promise.all([...LOOPS, ...ONESHOTS, 'music-ride'].map(load));
       for (const name of LOOPS) startLoop(name);
@@ -70,7 +92,7 @@ export function createAudio() {
         source.buffer = buffers['music-ride'];
         source.loop = true;
         musicGain = ctx.createGain();
-        musicGain.gain.value = 0.18;
+        musicGain.gain.value = 0.25;
         source.connect(musicGain).connect(master);
         source.start();
       }
@@ -78,8 +100,14 @@ export function createAudio() {
     toggleMute() {
       muted = !muted;
       localStorage.setItem('downhill-muted', muted ? '1' : '0');
-      if (master) master.gain.setTargetAtTime(muted ? 0 : 0.9, ctx.currentTime, 0.05);
+      if (master) master.gain.setTargetAtTime(muted ? 0 : volume, ctx.currentTime, 0.05);
       return muted;
+    },
+    setVolume(next) {
+      volume = Math.min(1, Math.max(0, Number(next) || 0));
+      localStorage.setItem('downhill-volume', String(volume));
+      if (master) master.gain.setTargetAtTime(muted ? 0 : volume, ctx.currentTime, 0.05);
+      return volume;
     },
     update(bike, input, riding, dt) {
       if (!ctx) return;
@@ -96,21 +124,18 @@ export function createAudio() {
         skidCooldown = 1.2;
       }
     },
-    event(name) {
+    event(name, value) {
       if (!ctx) return;
-      const now = ctx.currentTime;
-      const voice = (line, chance = 1) => {
-        if (now - lastVoice < 3 || Math.random() > chance) return;
-        lastVoice = now;
-        play(line, 0.9);
-      };
-      if (name === 'start') voice('vo-go');
-      if (name === 'checkpoint') { play('checkpoint', 0.5); voice('vo-checkpoint', 0.5); }
+      if (name === 'start') playVoice('vo-go');
+      if (name === 'checkpoint') {
+        play('checkpoint', 0.5);
+        playVoice(value ? 'vo-clean' : 'vo-checkpoint');
+      }
       if (name === 'land') play('land', 0.8);
-      if (name === 'big-air') voice('vo-air');
-      if (name === 'crash') { play('crash', 0.9); voice('vo-crash', 0.7); }
+      if (name === 'kicker') playVoice(value > 12 ? 'vo-send' : 'vo-air');
+      if (name === 'crash') { play('crash', 0.9); playVoice('vo-crash'); }
       if (name === 'finish') play('finish-cheer', 0.8);
-      if (name === 'best') voice('vo-best');
+      if (name === 'best') playVoice('vo-best');
     },
   };
 }

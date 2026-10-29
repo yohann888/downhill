@@ -35,6 +35,9 @@ export function createRiderModel() {
   const root = new THREE.Group();
   const body = new THREE.Group();
   root.add(body);
+  const assetHolder = new THREE.Group();
+  assetHolder.visible = false;
+  root.add(assetHolder);
 
   const rearWheel = wheel(tireMat, darkMat);
   rearWheel.position.set(0, WHEEL_R, HALF_BASE);
@@ -86,8 +89,89 @@ export function createRiderModel() {
 
   let pitch = 0;
   let cadence = 0;
+  let assetBaseY = 0;
+  let assetBob = 0;
+  let assetShift = 0;
+  let assetBones = null;
+  let boneMotion = { spine: 0, spine01: 0, hips: 0 };
+
+  function rememberBones(scene) {
+    const bones = {};
+    scene.traverse((object) => {
+      if (!object.isBone) return;
+      if (!Number.isFinite(object.position.x)) object.position.x = 0;
+      if (!Number.isFinite(object.position.y)) object.position.y = 0;
+      if (!Number.isFinite(object.position.z)) object.position.z = 0;
+      if (![object.quaternion.x, object.quaternion.y, object.quaternion.z, object.quaternion.w].every(Number.isFinite)) {
+        object.quaternion.identity();
+      }
+      bones[object.name] = {
+        object,
+        rotation: object.rotation.clone(),
+        position: object.position.clone(),
+      };
+    });
+    return bones;
+  }
+
+  function setGlb(gltf) {
+    if (!gltf?.scene) return false;
+    assetHolder.clear();
+    const scene = gltf.scene;
+    assetHolder.add(scene);
+    assetHolder.scale.setScalar(1);
+    assetHolder.position.set(0, 0, 0);
+    assetHolder.rotation.set(0, 0, 0);
+    let boundsObject = scene;
+    scene.traverse((object) => {
+      if (object.isSkinnedMesh && boundsObject === scene) boundsObject = object;
+    });
+    assetBones = rememberBones(scene);
+    const rootPosition = root.position.clone();
+    const rootRotation = root.rotation.clone();
+    const rootScale = root.scale.clone();
+    root.position.set(0, 0, 0);
+    root.rotation.set(0, 0, 0);
+    root.scale.setScalar(1);
+    root.updateMatrixWorld(true);
+    scene.updateMatrixWorld(true);
+    boundsObject.skeleton?.update();
+    const box = new THREE.Box3().setFromObject(scene);
+    const size = box.getSize(new THREE.Vector3());
+    if (size.y <= 1e-4) {
+      root.position.copy(rootPosition);
+      root.rotation.copy(rootRotation);
+      root.scale.copy(rootScale);
+      root.updateMatrixWorld(true);
+      assetHolder.clear();
+      return false;
+    }
+    const scale = 1.7 / size.y;
+    assetHolder.scale.setScalar(scale);
+    assetBaseY = -box.min.y * scale;
+    assetHolder.position.set(0, assetBaseY, 0);
+    assetHolder.rotation.set(0, Math.PI, 0);
+    root.position.copy(rootPosition);
+    root.rotation.copy(rootRotation);
+    root.scale.copy(rootScale);
+    root.updateMatrixWorld(true);
+    scene.updateMatrixWorld(true);
+    boundsObject.skeleton?.update();
+    boneMotion = { spine: 0, spine01: 0, hips: 0 };
+    scene.traverse((object) => {
+      if (object.isMesh) {
+        object.castShadow = true;
+        object.receiveShadow = true;
+      }
+    });
+    body.visible = false;
+    assetHolder.visible = true;
+    return true;
+  }
+
   return {
     root,
+    setGlb,
     update(bike, input, grade, dt) {
       const k = 1 - Math.exp(-10 * dt);
       const targetPitch = bike.airborne
@@ -106,6 +190,32 @@ export function createRiderModel() {
       rider.position.y += (crouch - rider.position.y) * k;
       rider.position.z += (shift - rider.position.z) * k;
       rider.rotation.z = Math.sin(cadence) * 0.04 * (input.throttle ? 1 : 0);
+      if (assetHolder.visible && assetBones) {
+        assetBob += (crouch - assetBob) * k;
+        assetShift += (shift - assetShift) * k;
+        assetHolder.position.y = assetBaseY + assetBob;
+        assetHolder.position.z = assetShift;
+
+        const speedDrive = Math.min(1, bike.v / 16);
+        const targetSpine = input.brake
+          ? -0.15
+          : input.throttle
+            ? 0.05 + speedDrive * 0.2
+            : speedDrive * 0.05;
+        const targetHips = (input.steer ?? 0) * 0.04;
+        boneMotion.spine += (targetSpine - boneMotion.spine) * k;
+        boneMotion.spine01 += (targetSpine * 0.7 - boneMotion.spine01) * k;
+        boneMotion.hips += (targetHips - boneMotion.hips) * k;
+
+        const spine = assetBones.Spine;
+        const spine01 = assetBones.Spine01;
+        const head = assetBones.Head;
+        const hips = assetBones.Hips;
+        if (spine) spine.object.rotation.x = (Number.isFinite(spine.rotation.x) ? spine.rotation.x : 0) + boneMotion.spine * 0.55;
+        if (spine01) spine01.object.rotation.x = (Number.isFinite(spine01.rotation.x) ? spine01.rotation.x : 0) + boneMotion.spine01 * 0.45;
+        if (head) head.object.rotation.x = (Number.isFinite(head.rotation.x) ? head.rotation.x : 0) - boneMotion.spine01 * 0.7;
+        if (hips) hips.object.position.x = (Number.isFinite(hips.position.x) ? hips.position.x : 0) + boneMotion.hips;
+      }
     },
   };
 }

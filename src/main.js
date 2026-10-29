@@ -42,9 +42,12 @@ const ui = {
   body: document.getElementById('overlay-body'),
   button: document.getElementById('overlay-button'),
   mute: document.getElementById('mute'),
+  volume: document.getElementById('volume'),
 };
 ui.mute.textContent = audio.muted ? 'Sound off' : 'Sound on';
 ui.mute.addEventListener('click', () => { ui.mute.textContent = audio.toggleMute() ? 'Sound off' : 'Sound on'; ui.mute.blur(); });
+ui.volume.value = String(audio.volume);
+ui.volume.addEventListener('input', () => audio.setVolume(Number(ui.volume.value)));
 
 const keys = { left: false, right: false, throttle: false, brake: false };
 const KEYMAP = {
@@ -85,6 +88,7 @@ const game = {
   crashTimer: 0,
   maxSpeed: 0,
   airTime: 0,
+  crashedSinceCheckpoint: false,
   best: Number(localStorage.getItem('downhill-best')) || null,
 };
 
@@ -105,8 +109,7 @@ function startPose() {
 }
 
 function start() {
-  audio.unlock();
-  audio.event('start');
+  audio.unlock().then(() => audio.event('start'));
   const p = startPose();
   placeBike(p.x, p.z, p.heading, 0);
   game.mode = 'riding';
@@ -114,6 +117,7 @@ function start() {
   game.penalty = 0;
   game.checkpoint = -1;
   game.maxSpeed = 0;
+  game.crashedSinceCheckpoint = false;
   ui.overlay.classList.add('hidden');
   snapCamera();
 }
@@ -165,9 +169,13 @@ function simulate(input) {
   stepBike(b, input, terrain, obstacles, DT);
   game.time += DT;
   if (b.airborne) game.airTime += DT;
+  if (!wasAir && b.airborne) {
+    const kicker = terrain.kickers.find((item) => Math.abs(item.z - b.z) < 8);
+    if (kicker) audio.event('kicker', b.v);
+  }
   if (wasAir && !b.airborne && !b.crashed) {
     audio.event('land');
-    if (game.airTime > 0.7) { audio.event('big-air'); flash('Big air', 800); }
+    if (game.airTime > 0.7) flash('Big air', 800);
   }
   if (!b.airborne) game.airTime = 0;
   game.maxSpeed = Math.max(game.maxSpeed, b.v);
@@ -176,10 +184,12 @@ function simulate(input) {
   if (next && s >= next.s) {
     game.checkpoint += 1;
     flash(`Checkpoint ${game.checkpoint + 1}`, 900);
-    audio.event('checkpoint');
+    audio.event('checkpoint', !game.crashedSinceCheckpoint);
+    game.crashedSinceCheckpoint = false;
   }
   if (b.crashed) {
     game.mode = 'crashed';
+    game.crashedSinceCheckpoint = true;
     game.penalty += CRASH_PENALTY;
     game.crashTimer = RESPAWN_DELAY;
     audio.event('crash');
@@ -302,9 +312,15 @@ window.addEventListener('resize', () => {
 const p = startPose();
 placeBike(p.x, p.z, p.heading, 0);
 snapCamera();
-window.__game = game;
-loadModels(['boulder', 'stump', 'log', 'pine-a', 'pine-b']).then((models) => world.applyModels(models));
-window.__terrain = terrain;
-window.__camera = camera;
-window.__scene = scene;
+const debug = new URLSearchParams(window.location.search).has('debug');
+loadModels(['rider', 'boulder', 'rock-flat', 'stump', 'log', 'pine-a', 'pine-b']).then((models) => {
+  if (models.rider) model.setGlb(models.rider);
+  world.applyModels(models);
+});
+if (debug) {
+  window.__game = game;
+  window.__terrain = terrain;
+  window.__camera = camera;
+  window.__scene = scene;
+}
 requestAnimationFrame((t) => { last = t; frame(t); });
