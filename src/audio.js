@@ -1,6 +1,7 @@
 const BASE = './assets/audio/';
 const LOOPS = ['tire-gravel-loop', 'wind-loop', 'freewheel-loop', 'pedal-loop', 'forest-loop', 'brake-skid'];
 const ONESHOTS = ['crash', 'land', 'checkpoint', 'finish-cheer', 'vo-go', 'vo-clean', 'vo-air', 'vo-crash', 'vo-checkpoint', 'vo-best', 'vo-send'];
+const clamp01 = (value) => Math.min(1, Math.max(0, value));
 
 export function createAudio() {
   let ctx = null;
@@ -117,8 +118,8 @@ export function createAudio() {
       setLoop('wind-loop', riding ? speed01 * speed01 * 0.8 : 0, 0.85 + speed01 * 0.35);
       setLoop('pedal-loop', grounded && input.throttle ? 0.45 : 0, 0.9 + speed01 * 0.4);
       setLoop('freewheel-loop', grounded && !input.throttle && v > 1 ? 0.18 : 0, 0.8 + speed01 * 0.6);
-      const brakeForce = grounded ? Math.max(0, Math.min(1, bike.brake)) : 0;
-      setLoop('brake-skid', 0.35 * brakeForce * speed01, 0.9 + speed01 * 0.3);
+      const skid = grounded ? Math.max(clamp01(bike.brake), bike.slipping ? 0.8 : 0) : 0;
+      setLoop('brake-skid', 0.35 * skid * speed01, 0.9 + speed01 * 0.3);
     },
     event(name, value) {
       if (!ctx) return;
