@@ -52,7 +52,7 @@ let bestGhost = null;
 let ghostAssetsReady = false;
 let leaderboardEntries = [];
 let commentaryTimeout;
-const dust = createDust(scene);
+const dust = createDust(scene, terrain);
 const audio = createAudio();
 
 const ui = {
@@ -418,7 +418,8 @@ function cameraTarget(out, look) {
   const heading = crashFocus ? game.crashHeading : render.heading;
   const fx = Math.sin(heading);
   const fz = -Math.cos(heading);
-  out.set(focus.x - fx * 6.2, focus.y + 2.5, focus.z - fz * 6.2);
+  const chaseDistance = 6.2 * (1 - 0.1 * Math.min(1, Math.max(0, game.bike.v) / 25));
+  out.set(focus.x - fx * chaseDistance, focus.y + 2.5, focus.z - fz * chaseDistance);
   const ground = terrain.heightAt(out.x, out.z) + 1.2;
   if (out.y < ground) out.y = ground;
   look.set(focus.x + fx * 5, focus.y + 0.9, focus.z + fz * 5);
@@ -459,7 +460,7 @@ function updateCamera(dt) {
   camera.position.copy(cam.pos).add(shakeOffset);
   camera.lookAt(cam.look);
   camera.rotateZ(smoothNoise(shakeTime, 4.8) * 0.04 * traumaScale);
-  const targetFov = 62 + Math.min(20, b.v * 0.8);
+  const targetFov = 62 + Math.min(28, b.v * 0.9);
   cam.fov += (targetFov - cam.fov) * (1 - Math.exp(-3 * dt));
   camera.fov = cam.fov;
   camera.updateProjectionMatrix();

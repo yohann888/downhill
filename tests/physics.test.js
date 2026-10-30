@@ -114,6 +114,28 @@ describe('bike physics', () => {
     );
   });
 
+  it('reports skid under hard braking, but not while coasting or airborne', () => {
+    const terrain = createPlaneTerrain();
+    const braking = createBike({ x: 0, z: 0 }, terrain);
+    braking.v = 15;
+    const brake = { throttle: 0, brake: 1, steer: 0 };
+    for (let elapsed = 0; elapsed < 0.4; elapsed += DT) {
+      stepBike(braking, brake, terrain, [], DT);
+    }
+    expect(braking.skid).toBeGreaterThan(0.5);
+
+    const coasting = createBike({ x: 0, z: 0 }, terrain);
+    coasting.v = 15;
+    stepBike(coasting, noInput, terrain, [], DT);
+    expect(coasting.skid).toBeCloseTo(0);
+
+    const airborne = createBike({ x: 0, z: 0 }, terrain);
+    airborne.v = 15;
+    airborne.airborne = true;
+    stepBike(airborne, brake, terrain, [], DT);
+    expect(airborne.skid).toBe(0);
+  });
+
   it('turns toward positive x at low speed with the expected yaw rate', () => {
     const terrain = createPlaneTerrain();
     const bike = createBike({ x: 0, z: 0 }, terrain);

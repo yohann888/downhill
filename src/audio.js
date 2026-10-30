@@ -157,7 +157,13 @@ export function createAudio() {
       setLoop('wind-loop', riding ? speed01 * speed01 * 0.8 : 0, rate(0.85 + speed01 * 0.35));
       setLoop('pedal-loop', grounded && input.throttle ? 0.45 : 0, rate(0.9 + speed01 * 0.4));
       setLoop('freewheel-loop', grounded && !input.throttle && v > 1 ? 0.18 : 0, rate(0.8 + speed01 * 0.6));
-      const skid = grounded ? Math.max(clamp01(bike.brake), bike.slipping ? 0.8 : 0) : 0;
+      const skid = grounded
+        ? Math.max(
+            clamp01(bike.brake),
+            bike.slipping ? 0.8 : 0,
+            clamp01(bike.skid || 0),
+          )
+        : 0;
       setLoop('brake-skid', 0.35 * skid * speed01, rate(0.9 + speed01 * 0.3));
     },
     event(name, value) {

@@ -19,7 +19,7 @@ function bar(material, from, to, thickness = 0.045) {
 
 function wheel(tire, rim) {
   const g = new THREE.Group();
-  g.add(new THREE.Mesh(new THREE.TorusGeometry(WHEEL_R - 0.04, 0.045, 8, 28).rotateY(Math.PI / 2), tire));
+  g.add(new THREE.Mesh(new THREE.TorusGeometry(WHEEL_R - 0.07, 0.07, 8, 28).rotateY(Math.PI / 2), tire));
   for (let i = 0; i < 4; i += 1) {
     const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.01, WHEEL_R * 1.8, 0.012), rim);
     spoke.rotation.x = (i * Math.PI) / 4;
@@ -192,7 +192,7 @@ function markShadowMeshes(group) {
 export function createRiderModel() {
   const frameMat = new THREE.MeshStandardMaterial({ color: 0xff6a2b, roughness: 0.35, metalness: 0.3 });
   const darkMat = new THREE.MeshStandardMaterial({ color: 0x1b1b1d, roughness: 0.6 });
-  const tireMat = new THREE.MeshStandardMaterial({ color: 0x151515, roughness: 0.9 });
+  const tireMat = new THREE.MeshStandardMaterial({ color: 0x151515, roughness: 0.95 });
   const jerseyMat = new THREE.MeshStandardMaterial({ color: 0x1c8c8c, roughness: 0.8 });
   const pantsMat = new THREE.MeshStandardMaterial({ color: 0x2a2f38, roughness: 0.9 });
   const helmetMat = new THREE.MeshStandardMaterial({ color: 0xf2f2f2, roughness: 0.4 });
@@ -346,11 +346,17 @@ export function createRiderModel() {
       return failAssetSetup(`Bike wheel bounds are invalid: ${wheelSize.toArray().join(', ')}`);
     }
     const wheelCenter = wheelBox.getCenter(new THREE.Vector3());
-    const wheelScale = (2 * WHEEL_R) / wheelDiameter;
+    const wheelScale = (2 * (WHEEL_R - 0.06)) / wheelDiameter;
     const makeSpinningWheel = (parent, position) => {
       const pivot = new THREE.Group();
       pivot.position.copy(position);
       parent.add(pivot);
+      pivot.add(
+        new THREE.Mesh(
+          new THREE.TorusGeometry(WHEEL_R - 0.07, 0.07, 8, 28).rotateY(Math.PI / 2),
+          tireMat,
+        ),
+      );
       const mount = new THREE.Group();
       mount.rotation.y = Math.PI / 2;
       mount.scale.setScalar(wheelScale);

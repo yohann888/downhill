@@ -134,18 +134,20 @@ function createFarHeight(terrain) {
 
 function buildRangeMesh(terrain, groundTextures) {
   const size = 7000;
-  const segments = 260;
+  const segments = 480;
   const geometry = new THREE.PlaneGeometry(size, size, segments, segments);
   geometry.rotateX(-Math.PI / 2);
   geometry.translate(0, 0, -900);
   const { farHeight, lakeY } = createFarHeight(terrain);
   const detail = createValueNoise(29);
   const pos = geometry.attributes.position;
+  const distances = new Float32Array(pos.count);
   const colors = new Float32Array(pos.count * 3);
   const splat = new Float32Array(pos.count * 2);
   const forest = new THREE.Color(0.42, 0.55, 0.36);
   const stone = new THREE.Color(1, 1, 1);
   const snow = new THREE.Color(2.4, 2.45, 2.6);
+  const haze = new THREE.Color(0xb9c3cb);
   const color = new THREE.Color();
   for (let i = 0; i < pos.count; i += 1) {
     const x = pos.getX(i);
@@ -153,10 +155,23 @@ function buildRangeMesh(terrain, groundTextures) {
     const far = farHeight(x, z);
     const y = far.y - 45 * (1 - smoothstep(210, 255, far.distance));
     pos.setY(i, y);
-    const rel = y - lakeY;
-    const stoneW = smoothstep(140, 260, rel);
-    const snowW = smoothstep(290, 360, rel + detail(x / 40, z / 40) * 40);
-    color.copy(forest).lerp(stone, stoneW).lerp(snow, snowW);
+    distances[i] = far.distance;
+  }
+  geometry.computeVertexNormals();
+  const normals = geometry.attributes.normal;
+  for (let i = 0; i < pos.count; i += 1) {
+    const x = pos.getX(i);
+    const z = pos.getZ(i);
+    const rel = pos.getY(i) - lakeY;
+    const steep = 1 - smoothstep(0.72, 0.78, normals.getY(i));
+    const stoneW = Math.max(smoothstep(140, 260, rel), steep);
+    const snowW =
+      smoothstep(290, 360, rel + detail(x / 40, z / 40) * 40) * (1 - steep);
+    color
+      .copy(forest)
+      .lerp(stone, stoneW)
+      .lerp(snow, snowW)
+      .lerp(haze, 0.55 * smoothstep(300, 3000, distances[i]));
     splat[i * 2 + 1] = Math.max(stoneW, snowW);
     colors[i * 3] = color.r;
     colors[i * 3 + 1] = color.g;
@@ -164,7 +179,6 @@ function buildRangeMesh(terrain, groundTextures) {
   }
   geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   geometry.setAttribute('splat', new THREE.BufferAttribute(splat, 2));
-  geometry.computeVertexNormals();
   const mesh = new THREE.Mesh(geometry, createGroundMaterial(groundTextures, { scale: 9, normalStrength: 0.6 }));
   mesh.receiveShadow = false;
   const lake = new THREE.Mesh(
