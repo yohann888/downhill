@@ -127,6 +127,7 @@ function respawn(manual) {
   const cp = terrain.checkpoints[game.checkpoint];
   const p = cp ? { x: cp.x, z: cp.z, heading: cp.heading } : startPose();
   placeBike(p.x, p.z, p.heading, cp ? 5 : 0);
+  game.airTime = 0;
   game.mode = 'riding';
   snapCamera();
 }
