@@ -137,7 +137,7 @@ describe('bike physics', () => {
     expect(airborne.skid).toBe(0);
   });
 
-  it('hops about 0.45 m, observes cooldown, and stays below the air-bonus threshold', () => {
+  it('hops about 0.62 m, observes cooldown, and stays below the air-bonus threshold', () => {
     const terrain = createPlaneTerrain();
     const bike = createBike({ x: 0, z: 0 }, terrain);
     const jump = { ...noInput, jump: 1 };
@@ -153,8 +153,8 @@ describe('bike physics', () => {
       maxHeight = Math.max(maxHeight, bike.y);
     }
 
-    expect(maxHeight).toBeCloseTo(0.45, 1);
-    expect(airtime).toBeCloseTo(0.6, 1);
+    expect(maxHeight).toBeCloseTo(0.62, 1);
+    expect(airtime).toBeCloseTo(0.7, 1);
     expect(airTimeBonus(airtime)).toBe(0);
 
     const cooldownBike = createBike({ x: 0, z: 0 }, terrain);
@@ -359,6 +359,73 @@ describe('bike physics', () => {
       stepBike(jumper, noInput, terrain, [log], DT);
     }
     expect(jumper.crashed).toBeNull();
+  });
+
+  it('crashes into a tree trunk but only bursts foliage once outside the trunk', () => {
+    const terrain = createPlaneTerrain();
+    const tree = {
+      type: 'tree',
+      x: 0,
+      z: -1,
+      r: 0.32,
+      foliageRadius: 1.6,
+      h: 10,
+    };
+    const trunkHit = createBike({ x: 0, z: 0 }, terrain);
+    trunkHit.v = 8;
+    for (let elapsed = 0; elapsed < 1 && !trunkHit.crashed; elapsed += DT) {
+      stepBike(trunkHit, noInput, terrain, [tree], DT);
+    }
+    expect(trunkHit.crashed).toBe('tree');
+
+    const foliageBike = createBike({ x: 0.9, z: 0 }, terrain);
+    foliageBike.v = 8;
+    const baseline = createBike({ x: 0.9, z: 0 }, terrain);
+    baseline.v = 8;
+    let foliageBursts = 0;
+    for (let elapsed = 0; elapsed < 2; elapsed += DT) {
+      stepBike(foliageBike, noInput, terrain, [tree], DT);
+      stepBike(baseline, noInput, terrain, [], DT);
+      if (foliageBike.foliageHit) foliageBursts += 1;
+    }
+    expect(foliageBike.crashed).toBeNull();
+    expect(foliageBursts).toBe(1);
+    expect(foliageBike.v).toBeCloseTo(baseline.v, 8);
+  });
+
+  it('hits an otter even when the bike is airborne above it', () => {
+    const terrain = createPlaneTerrain();
+    const rock = { type: 'rock', x: 0, z: -1, r: 1.05, h: 0.9 };
+    const bike = createBike({ x: 0, z: 0 }, terrain);
+    bike.v = 8;
+    bike.y += 1.5;
+    bike.airborne = true;
+    for (let elapsed = 0; elapsed < 1 && !bike.crashed; elapsed += DT) {
+      stepBike(bike, noInput, terrain, [rock], DT);
+    }
+    expect(bike.crashed).toBe('rock');
+  });
+
+  it('clears a log with a flat-ground hop at speed', () => {
+    const terrain = createPlaneTerrain();
+    const log = {
+      type: 'log',
+      x: 0,
+      z: -2.5,
+      x1: -1,
+      z1: -2.5,
+      x2: 1,
+      z2: -2.5,
+      r: 0.2,
+      h: 0.4,
+    };
+    const bike = createBike({ x: 0, z: 0 }, terrain);
+    bike.v = 10;
+    stepBike(bike, { ...noInput, jump: 1 }, terrain, [log], DT);
+    for (let elapsed = DT; elapsed < 1 && !bike.crashed; elapsed += DT) {
+      stepBike(bike, noInput, terrain, [log], DT);
+    }
+    expect(bike.crashed).toBeNull();
   });
 });
 

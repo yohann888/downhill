@@ -81,15 +81,16 @@ async def post_run(request: Request) -> dict[str, Any]:
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
 
+    existing = _top_entries()
+    duplicate = find_duplicate_rank(existing, run) is not None
+
     forwarded = request.headers.get("x-forwarded-for", "")
     ip = forwarded.split(",", 1)[0].strip() if forwarded else ""
     if not ip:
         ip = request.client.host if request.client else "unknown"
-    if not consume_rate_limit(board, ip, time.time()):
+    if not duplicate and not consume_rate_limit(board, ip, time.time()):
         raise HTTPException(status_code=429, detail="Run limit reached")
 
-    existing = _top_entries()
-    duplicate = find_duplicate_rank(existing, run) is not None
     updated, rank = insert_top(existing, run, timestamp=time.time())
     if not duplicate:
         board.put(TOP_KEY, updated)
@@ -184,6 +185,7 @@ async def post_commentary(body: dict[str, Any]) -> dict[str, Any]:
     image=image,
     secrets=[api_secret],
     min_containers=0,
+    scaledown_window=300,
 )
 @modal.asgi_app()
 def serve() -> FastAPI:

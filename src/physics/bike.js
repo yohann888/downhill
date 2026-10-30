@@ -77,6 +77,8 @@ export function createBike({ x, z, heading = 0 }, terrain) {
     aLong: 0,
     skid: 0,
     jumpCooldown: 0,
+    foliageHit: null,
+    foliageTrees: new Set(),
     lastGroundY: y,
   };
 }
@@ -85,6 +87,7 @@ export function stepBike(state, input, terrain, obstacles, dt) {
   state.heavyLanding = false;
   state.landingImpact = 0;
   state.skid = 0;
+  state.foliageHit = null;
   state.jumpCooldown = Math.max(0, state.jumpCooldown - dt);
   if (state.crashed) return state;
 
@@ -117,7 +120,7 @@ export function stepBike(state, input, terrain, obstacles, dt) {
 
   if (!state.airborne && input.jump && state.jumpCooldown <= 0) {
     const grade = gradeAlongHeading(terrain, state.x, state.z, state.heading);
-    state.vy += 3 / Math.sqrt(1 + grade * grade);
+    state.vy += 3.5 / Math.sqrt(1 + grade * grade);
     state.jumpCooldown = 0.4;
     state.airborne = true;
   }
@@ -242,6 +245,7 @@ export function stepBike(state, input, terrain, obstacles, dt) {
   }
 
   if (!state.crashed && obstacles) {
+    const currentFoliageTrees = new Set();
     for (const obstacle of obstacles) {
       if (Math.abs(obstacle.z - state.z) >= 6) continue;
 
@@ -249,10 +253,25 @@ export function stepBike(state, input, terrain, obstacles, dt) {
       const dx = state.x - closest.x;
       const dz = state.z - closest.z;
       const distance = Math.hypot(dx, dz);
-      const contactDistance = BIKE_RADIUS + obstacle.r;
+      const contactDistance =
+        obstacle.type === 'tree' ? obstacle.r + 0.2 : BIKE_RADIUS + obstacle.r;
+
+      if (obstacle.type === 'tree') {
+        const foliageRadius = Math.min(1.6, obstacle.foliageRadius ?? 0);
+        if (distance >= contactDistance && distance < foliageRadius) {
+          currentFoliageTrees.add(obstacle);
+          if (!state.foliageTrees.has(obstacle)) {
+            state.foliageHit = { x: state.x, z: state.z };
+          }
+          continue;
+        }
+      }
 
       if (distance >= contactDistance) continue;
-      if (state.y - terrain.heightAt(closest.x, closest.z) >= obstacle.h) continue;
+      if (
+        obstacle.type !== 'rock' &&
+        state.y - terrain.heightAt(closest.x, closest.z) >= obstacle.h
+      ) continue;
 
       if (state.v > OBSTACLE_CRASH_SPEED) {
         state.crashed = obstacle.type;
@@ -265,6 +284,9 @@ export function stepBike(state, input, terrain, obstacles, dt) {
       state.z = closest.z + normalZ * contactDistance;
       state.v = 0;
     }
+    state.foliageTrees = currentFoliageTrees;
+  } else {
+    state.foliageTrees.clear();
   }
 
   if (state.airborne || state.crashed) state.skid = 0;
