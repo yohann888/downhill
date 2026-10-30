@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { nextQualityLevel, slowMoTarget } from '../src/feel.js';
+import { airTimeBonus, nextQualityLevel, slowMoTarget } from '../src/feel.js';
 
 describe('slowMoTarget', () => {
   it('slows only during sufficiently high, sustained airtime', () => {
@@ -16,5 +16,14 @@ describe('nextQualityLevel', () => {
     expect(nextQualityLevel(45, 0)).toBe(0);
     expect(nextQualityLevel(30, 2)).toBe(3);
     expect(nextQualityLevel(10, 3)).toBe(3);
+  });
+});
+
+describe('airTimeBonus', () => {
+  it('awards rounded airtime bonuses only above the threshold and halves heavy landings', () => {
+    expect(airTimeBonus(0.8)).toBe(0);
+    expect(airTimeBonus(1.7)).toBe(1.2);
+    expect(airTimeBonus(1.7, true)).toBe(0.6);
+    expect(airTimeBonus(10)).toBe(3);
   });
 });

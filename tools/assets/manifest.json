@@ -27,7 +27,7 @@
     { "name": "forest-loop", "prompt": "alpine forest ambience, distant birds, light breeze in pine trees", "seconds": 10, "loop": true }
   ],
   "music": [
-    { "name": "music-ride", "prompt": "energetic instrumental indie rock for an action sports video, driving drums, bright electric guitars, no vocals", "seconds": 90 }
+    { "name": "music-ride", "prompt": "epic cinematic space opera orchestral theme with soaring French horn and brass fanfare, sweeping strings and choir, fused with uplifting 138 BPM progressive trance, supersaw lead, rolling bassline, driving four on the floor kick, a big build and euphoric drop, instrumental, no vocals", "seconds": 90 }
   ],
   "voice": {
     "style": "energetic male sports commentator",

@@ -40,6 +40,10 @@
           <label for="rider-name">Name</label>
           <input id="rider-name" name="name" maxlength="12" autocomplete="nickname" />
           <button type="submit">Submit</button>
+          <div id="finish-actions" hidden>
+            <button id="leaderboard-button" type="button" hidden>Leaderboard</button>
+            <button id="wave-button" type="button">Wave</button>
+          </div>
           <div id="finish-leaderboard"></div>
         </form>
         <button id="overlay-button" type="button">Ride</button>
@@ -48,12 +52,13 @@
     <div id="commentary-subtitle" aria-live="polite"></div>
     <div id="touch">
       <div class="touch-group">
-        <button data-key="left" type="button" aria-label="Steer left">&#9664;</button>
-        <button data-key="right" type="button" aria-label="Steer right">&#9654;</button>
+        <button data-key="left" type="button" aria-label="Steer left"><span>◀</span><small>A</small></button>
+        <button data-key="right" type="button" aria-label="Steer right"><span>▶</span><small>D</small></button>
       </div>
       <div class="touch-group">
-        <button data-key="brake" type="button">Brake</button>
-        <button data-key="throttle" type="button">Pedal</button>
+        <button data-key="brake" type="button"><span>Brake</span><small>S</small></button>
+        <button data-key="throttle" type="button"><span>Pedal</span><small>W</small></button>
+        <button data-key="jump" type="button"><span>Jump</span><small>Space</small></button>
       </div>
     </div>
     <script type="module" src="./src/main.js"></script>

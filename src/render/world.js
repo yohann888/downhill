@@ -4,6 +4,12 @@ import { createRandom, createValueNoise } from '../world/noise.js';
 import { crossProfile } from '../world/terrain.js';
 import { unitMesh } from './assets.js';
 import { createGroundMaterial, loadGroundTextures } from './ground.js';
+import {
+  createOtterStickerMaterial,
+  disposeOtterMesh,
+  prepareOtterMesh,
+  updateOtterMesh,
+} from './otter.js';
 
 const smoothstep = (a, b, v) => {
   const t = Math.min(1, Math.max(0, (v - a) / (b - a)));
@@ -265,9 +271,12 @@ function buildTrees(terrain, obstacles) {
   return group;
 }
 
-function buildObstacles(terrain, obstacles) {
+function buildObstacles(terrain, obstacles, renderer) {
   const group = new THREE.Group();
   const movingMeshes = [];
+  const otterMeshes = [];
+  const stickerMaterial = createOtterStickerMaterial(renderer);
+  let otterTemplate = null;
   const rockMaterial = new THREE.MeshStandardMaterial({ color: 0x86827a, roughness: 0.9, flatShading: true });
   const woodMaterial = new THREE.MeshStandardMaterial({ color: 0x6a4a2e, roughness: 0.9 });
   const cutMaterial = new THREE.MeshStandardMaterial({ color: 0xc19a6b, roughness: 0.9 });
@@ -313,6 +322,11 @@ function buildObstacles(terrain, obstacles) {
       if (o.type === 'rock') {
         mesh.userData.yOffset = 0;
         mesh.rotation.y = o.dir < 0 ? -Math.PI / 2 : Math.PI / 2;
+        if (otter) {
+          otterTemplate ??= new THREE.Mesh(model.geometry, model.material);
+          prepareOtterMesh(mesh, renderer, stickerMaterial);
+          otterMeshes.push(mesh);
+        }
       }
       if (o.type === 'log') {
         const length = Math.hypot(o.x2 - o.x1, o.z2 - o.z1) + 0.3;
@@ -338,7 +352,7 @@ function buildObstacles(terrain, obstacles) {
     }
   };
   let lastTime = 0;
-  group.userData.update = (time) => {
+  group.userData.update = (time, riderPosition = new THREE.Vector3()) => {
     const deltaTime = Math.max(0, Math.min(0.1, time - lastTime));
     const turnAlpha = 1 - Math.exp(-10 * deltaTime);
     lastTime = time;
@@ -360,7 +374,18 @@ function buildObstacles(terrain, obstacles) {
         o.z,
       );
     }
+    for (const mesh of otterMeshes) updateOtterMesh(mesh, time, riderPosition);
   };
+  group.userData.createWaveOtter = () => {
+    if (!otterTemplate) return null;
+    const mesh = otterTemplate.clone();
+    prepareOtterMesh(mesh, renderer, stickerMaterial);
+    return mesh;
+  };
+  group.userData.updateWaveOtter = (mesh, time, riderPosition, wave) => {
+    updateOtterMesh(mesh, time, riderPosition, wave);
+  };
+  group.userData.disposeWaveOtter = (mesh) => disposeOtterMesh(mesh);
   return group;
 }
 
@@ -455,7 +480,7 @@ export function buildWorld(scene, renderer, terrain, obstacles) {
   scene.add(buildCourseMesh(terrain, groundTextures));
   scene.add(buildRangeMesh(terrain, groundTextures));
   const trees = buildTrees(terrain, obstacles);
-  const obstacleGroup = buildObstacles(terrain, obstacles);
+  const obstacleGroup = buildObstacles(terrain, obstacles, renderer);
   scene.add(trees, obstacleGroup);
   scene.add(buildMarkers(terrain));
 
@@ -479,20 +504,30 @@ export function buildWorld(scene, renderer, terrain, obstacles) {
       };
       trees.userData.swap([pine('pine-a'), pine('pine-b')]);
       const rock = pick('boulder', 'xz');
+      const otter = pick('otter', 'y');
       obstacleGroup.userData.swap({
         boulder: rock,
         'rock-flat': pick('rock-flat', 'xz'),
         stump: pick('stump', 'xz'),
         log: pick('log', 'xz'),
-        otter: pick('otter', 'y'),
+        otter,
       });
     },
     followSun(target) {
       sun.target.position.copy(target);
       sun.position.copy(target).addScaledVector(SUN_DIRECTION, 200);
     },
-    update(time) {
-      obstacleGroup.userData.update(time);
+    createWaveOtter() {
+      return obstacleGroup.userData.createWaveOtter();
+    },
+    updateWaveOtter(mesh, time, riderPosition, wave) {
+      obstacleGroup.userData.updateWaveOtter(mesh, time, riderPosition, wave);
+    },
+    disposeWaveOtter(mesh) {
+      obstacleGroup.userData.disposeWaveOtter(mesh);
+    },
+    update(time, riderPosition) {
+      obstacleGroup.userData.update(time, riderPosition);
     },
   };
 }

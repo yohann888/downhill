@@ -76,6 +76,7 @@ export function createBike({ x, z, heading = 0 }, terrain) {
     aLat: 0,
     aLong: 0,
     skid: 0,
+    jumpCooldown: 0,
     lastGroundY: y,
   };
 }
@@ -84,6 +85,7 @@ export function stepBike(state, input, terrain, obstacles, dt) {
   state.heavyLanding = false;
   state.landingImpact = 0;
   state.skid = 0;
+  state.jumpCooldown = Math.max(0, state.jumpCooldown - dt);
   if (state.crashed) return state;
 
   const surface = terrain.surfaceAt(state.x, state.z);
@@ -112,6 +114,13 @@ export function stepBike(state, input, terrain, obstacles, dt) {
     0,
     1,
   );
+
+  if (!state.airborne && input.jump && state.jumpCooldown <= 0) {
+    const grade = gradeAlongHeading(terrain, state.x, state.z, state.heading);
+    state.vy += 3 / Math.sqrt(1 + grade * grade);
+    state.jumpCooldown = 0.4;
+    state.airborne = true;
+  }
 
   if (!state.airborne) {
     const grade = gradeAlongHeading(terrain, state.x, state.z, state.heading);

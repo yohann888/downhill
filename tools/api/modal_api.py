@@ -53,6 +53,7 @@ def _public_run(item: dict[str, Any]) -> dict[str, Any]:
         "name": item["name"],
         "time": item["time"],
         "penalties": item["penalties"],
+        "bonus": item.get("bonus", 0),
         "topSpeed": item["topSpeed"],
         "ts": item["ts"],
     }
@@ -169,7 +170,7 @@ async def _commentary_audio(text: str) -> str | None:
 async def post_commentary(body: dict[str, Any]) -> dict[str, Any]:
     stats = {
         key: body.get(key)
-        for key in ("time", "penalties", "topSpeed", "crashes", "otterHits", "maxAir", "rank")
+        for key in ("time", "penalties", "bonus", "topSpeed", "crashes", "otterHits", "maxAir", "rank")
     }
     try:
         text = await _commentary_text(stats)

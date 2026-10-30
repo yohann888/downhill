@@ -10,7 +10,7 @@ import { createDust } from './render/dust.js';
 import { createAudio } from './audio.js';
 import { loadModels } from './render/assets.js';
 import { createPost } from './render/post.js';
-import { nextQualityLevel, slowMoTarget } from './feel.js';
+import { airTimeBonus, nextQualityLevel, slowMoTarget } from './feel.js';
 import { getCommentary, getLeaderboard, postRun } from './api.js';
 import { createRecorder, sampleGhost } from './ghost.js';
 
@@ -71,6 +71,9 @@ const ui = {
   finishForm: document.getElementById('finish-controls'),
   nameInput: document.getElementById('rider-name'),
   submitButton: document.querySelector('#finish-controls button[type="submit"]'),
+  finishActions: document.getElementById('finish-actions'),
+  leaderboardButton: document.getElementById('leaderboard-button'),
+  waveButton: document.getElementById('wave-button'),
   finishLeaderboard: document.getElementById('finish-leaderboard'),
   ghostStatus: document.getElementById('ghost-status'),
   subtitle: document.getElementById('commentary-subtitle'),
@@ -89,13 +92,35 @@ ui.mute.addEventListener('click', () => { ui.mute.textContent = audio.toggleMute
 ui.volume.value = String(audio.volume);
 ui.volume.addEventListener('input', () => audio.setVolume(Number(ui.volume.value)));
 
-const keys = { left: false, right: false, throttle: false, brake: false };
+const keys = { left: false, right: false, throttle: false, brake: false, jump: false };
+let jumpQueued = false;
+const touchControls = document.querySelector('#touch');
+const touchButtons = [...document.querySelectorAll('#touch button')];
+function setKey(key, value) {
+  if (key === 'jump' && value && !keys.jump) jumpQueued = true;
+  keys[key] = value;
+  for (const button of touchButtons) {
+    if (button.dataset.key === key) button.classList.toggle('active', value);
+  }
+}
 const KEYMAP = {
   KeyA: 'left', ArrowLeft: 'left', KeyD: 'right', ArrowRight: 'right',
-  KeyW: 'throttle', ArrowUp: 'throttle', KeyS: 'brake', ArrowDown: 'brake', Space: 'brake',
+  KeyW: 'throttle', ArrowUp: 'throttle', KeyS: 'brake', ArrowDown: 'brake',
 };
 window.addEventListener('keydown', (e) => {
-  if (KEYMAP[e.code]) { keys[KEYMAP[e.code]] = true; e.preventDefault(); }
+  if (game.waveMode) {
+    endWave();
+    e.preventDefault();
+    return;
+  }
+  if (KEYMAP[e.code]) {
+    setKey(KEYMAP[e.code], true);
+    e.preventDefault();
+  }
+  if (e.code === 'Space' || e.code === 'KeyJ') {
+    setKey('jump', true);
+    e.preventDefault();
+  }
   if (e.code === 'Enter' && game.mode === 'finished' && e.target !== ui.nameInput) {
     e.preventDefault();
     submitRun();
@@ -103,11 +128,20 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyR' && game.mode === 'riding') respawn(true);
   if (e.code === 'KeyM') ui.mute.click();
 });
-window.addEventListener('keyup', (e) => { if (KEYMAP[e.code]) keys[KEYMAP[e.code]] = false; });
-window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
-for (const button of document.querySelectorAll('#touch button')) {
+window.addEventListener('keyup', (e) => {
+  if (KEYMAP[e.code]) setKey(KEYMAP[e.code], false);
+  if (e.code === 'Space' || e.code === 'KeyJ') setKey('jump', false);
+});
+window.addEventListener('blur', () => {
+  for (const k in keys) setKey(k, false);
+  jumpQueued = false;
+});
+for (const button of touchButtons) {
   const key = button.dataset.key;
-  const set = (value) => (e) => { e.preventDefault(); keys[key] = value; button.classList.toggle('active', value); };
+  const set = (value) => (e) => {
+    e.preventDefault();
+    setKey(key, value);
+  };
   button.addEventListener('pointerdown', set(true));
   button.addEventListener('pointerup', set(false));
   button.addEventListener('pointercancel', set(false));
@@ -118,11 +152,19 @@ ui.finishForm.addEventListener('submit', (event) => {
   event.preventDefault();
   submitRun();
 });
+ui.leaderboardButton.addEventListener('click', () => {
+  ui.finishLeaderboard.hidden = !ui.finishLeaderboard.hidden;
+});
+ui.waveButton.addEventListener('click', startWave);
+window.addEventListener('pointerdown', () => {
+  if (game.waveMode) endWave();
+});
 
 const readInput = () => ({
   throttle: keys.throttle ? 1 : 0,
   brake: keys.brake ? 1 : 0,
   steer: (keys.right ? 1 : 0) - (keys.left ? 1 : 0),
+  jump: jumpQueued ? 1 : 0,
 });
 
 const game = {
@@ -131,6 +173,7 @@ const game = {
   prev: null,
   time: 0,
   penalty: 0,
+  bonus: 0,
   checkpoint: -1,
   crashTimer: 0,
   maxSpeed: 0,
@@ -146,6 +189,7 @@ const game = {
   runId: 0,
   runSubmitted: false,
   runSubmitting: false,
+  waveMode: false,
   trauma: 0,
   best: Number(localStorage.getItem('downhill-best')) || null,
 };
@@ -177,6 +221,7 @@ function start() {
   updateMovingObstacles(obstacles, 0);
   world.update(0);
   game.penalty = 0;
+  game.bonus = 0;
   game.checkpoint = -1;
   game.maxSpeed = 0;
   game.maxAir = 0;
@@ -194,6 +239,9 @@ function start() {
   ui.nameInput.disabled = false;
   ui.submitButton.disabled = false;
   ui.submitButton.textContent = 'Submit';
+  ui.finishActions.hidden = true;
+  ui.leaderboardButton.hidden = true;
+  ui.finishLeaderboard.hidden = true;
   ui.finishLeaderboard.replaceChildren();
   ui.startLeaderboard.hidden = leaderboardEntries.length === 0;
   ui.overlay.classList.add('hidden');
@@ -268,11 +316,12 @@ function renderLeaderboard(container, entries, playerRank = null) {
 }
 
 function makeRunStats(name = 'Rider') {
-  const totalTime = game.time + game.penalty;
+  const totalTime = game.time + game.penalty - game.bonus;
   return {
     name,
     time: totalTime,
     penalties: game.penalty,
+    bonus: game.bonus,
     topSpeed: game.maxSpeed * 3.6,
     crashes: game.crashes,
     otterHits: game.otterHits,
@@ -295,15 +344,20 @@ async function submitRun() {
     if (runId !== game.runId) return;
     if (!result) {
       ui.finishLeaderboard.textContent = 'Leaderboard unavailable';
+      ui.finishLeaderboard.hidden = false;
       return;
     }
     game.runSubmitted = true;
     ui.submitButton.textContent = 'Submitted';
+    ui.leaderboardButton.hidden = false;
     leaderboardEntries = result.top || [];
     renderLeaderboard(ui.startLeaderboard, leaderboardEntries.slice(0, 3));
     renderLeaderboard(ui.finishLeaderboard, result.top, result.rank);
   } catch {
-    if (runId === game.runId) ui.finishLeaderboard.textContent = 'Leaderboard unavailable';
+    if (runId === game.runId) {
+      ui.finishLeaderboard.textContent = 'Leaderboard unavailable';
+      ui.finishLeaderboard.hidden = false;
+    }
   } finally {
     if (runId === game.runId) {
       game.runSubmitting = false;
@@ -351,7 +405,9 @@ function simulate(input) {
   }
   if (wasAir && !b.airborne && !b.crashed) {
     audio.event('land');
-    if (game.airTime > 0.7) flash('Big air', 800);
+    const bonus = airTimeBonus(game.airTime, b.heavyLanding);
+    game.bonus += bonus;
+    if (bonus > 0) flash(`Big air -${bonus.toFixed(1)}s`, 1200);
   }
   if (!b.airborne) game.airTime = 0;
   game.maxSpeed = Math.max(game.maxSpeed, b.v);
@@ -378,7 +434,7 @@ function simulate(input) {
     flash(`${CRASH_TEXT[b.crashed] || 'Crashed'}  +${CRASH_PENALTY}s`, 1500);
   } else if (b.z <= terrain.finishZ) {
     game.mode = 'finished';
-    const total = game.time + game.penalty;
+    const total = game.time + game.penalty - game.bonus;
     const isBest = !game.best || total < game.best;
     if (isBest) {
       game.best = total;
@@ -388,10 +444,13 @@ function simulate(input) {
     if (isBest) audio.event('best');
     showOverlay(
       isBest ? 'New best' : 'Finished',
-      `${total.toFixed(2)} s  (penalties ${game.penalty} s)  top ${Math.round(game.maxSpeed * 3.6)} km/h  best ${game.best.toFixed(2)} s`,
+      `${total.toFixed(2)} s  (penalties ${game.penalty} s, air bonus ${game.bonus.toFixed(1)} s)  top ${Math.round(game.maxSpeed * 3.6)} km/h  best ${game.best.toFixed(2)} s`,
       'Ride again',
     );
     ui.finishForm.hidden = false;
+    ui.finishActions.hidden = false;
+    ui.leaderboardButton.hidden = true;
+    ui.finishLeaderboard.hidden = true;
     ui.startLeaderboard.hidden = true;
     ui.nameInput.value = localStorage.getItem('downhill-name') || 'Rider';
     ui.finishLeaderboard.replaceChildren();
@@ -401,6 +460,78 @@ function simulate(input) {
 
 const cam = { pos: new THREE.Vector3(), look: new THREE.Vector3(), fov: 65 };
 const render = { x: 0, y: 0, z: 0, heading: 0, lean: 0 };
+const waveCameraPos = new THREE.Vector3();
+const waveCameraLook = new THREE.Vector3();
+const riderWorldPosition = new THREE.Vector3();
+let waveOtter = null;
+let waveStartedAt = 0;
+let waveBikeState = null;
+
+function startWave() {
+  if (game.mode !== 'finished' || game.waveMode) return;
+  const bike = game.bike;
+  const heading = bike.heading;
+  const fx = Math.sin(heading);
+  const fz = -Math.cos(heading);
+  const rightX = Math.cos(heading);
+  const rightZ = Math.sin(heading);
+  waveBikeState = { v: bike.v, vy: bike.vy, airborne: bike.airborne };
+  bike.v = 0;
+  bike.vy = 0;
+  bike.airborne = false;
+  game.prev = snapshot(bike);
+  model.root.position.set(bike.x, bike.y, bike.z);
+  waveCameraPos.set(bike.x + fx * 4, bike.y + 1.55, bike.z + fz * 4);
+  waveCameraLook.set(
+    bike.x + rightX * 0.55,
+    bike.y + 0.85,
+    bike.z + rightZ * 0.55,
+  );
+  if (!waveOtter) waveOtter = world.createWaveOtter();
+  if (waveOtter) {
+    const otterX = bike.x + rightX * 1.5;
+    const otterZ = bike.z + rightZ * 1.5;
+    waveOtter.position.set(otterX, terrain.heightAt(otterX, otterZ), otterZ);
+    waveOtter.rotation.y = Math.atan2(
+      waveCameraPos.x - otterX,
+      waveCameraPos.z - otterZ,
+    );
+    waveOtter.scale.setScalar(1.2);
+    scene.add(waveOtter);
+  }
+  game.waveMode = true;
+  waveStartedAt = performance.now();
+  model.setWavePose(true, 0);
+  ui.overlay.classList.add('hidden');
+  camera.position.copy(waveCameraPos);
+  camera.lookAt(waveCameraLook);
+  camera.fov = 48;
+  camera.updateProjectionMatrix();
+}
+
+function endWave() {
+  if (!game.waveMode) return;
+  game.waveMode = false;
+  if (waveOtter) {
+    scene.remove(waveOtter);
+    world.disposeWaveOtter(waveOtter);
+    waveOtter = null;
+  }
+  if (waveBikeState) {
+    game.bike.v = waveBikeState.v;
+    game.bike.vy = waveBikeState.vy;
+    game.bike.airborne = waveBikeState.airborne;
+    waveBikeState = null;
+  }
+  game.prev = snapshot(game.bike);
+  model.setWavePose(false, 0);
+  camera.fov = cam.fov;
+  cameraTarget(cam.pos, cam.look);
+  camera.position.copy(cam.pos);
+  camera.lookAt(cam.look);
+  camera.updateProjectionMatrix();
+  ui.overlay.classList.remove('hidden');
+}
 
 function interpolate(alpha) {
   const a = game.prev;
@@ -444,6 +575,11 @@ function smoothNoise(time, phase) {
 }
 
 function updateCamera(dt) {
+  if (game.waveMode) {
+    camera.position.copy(waveCameraPos);
+    camera.lookAt(waveCameraLook);
+    return;
+  }
   const b = game.bike;
   cameraTarget(tmpPos, tmpLook);
   const k = 1 - Math.exp(-(game.mode === 'crashed' ? 1.5 : 6) * dt);
@@ -495,8 +631,9 @@ function tintGhost() {
 
 function updateHud() {
   const b = game.bike;
+  touchControls.hidden = game.mode !== 'riding';
   ui.speed.textContent = String(Math.round(b.v * 3.6));
-  ui.timer.textContent = (game.time + game.penalty).toFixed(2);
+  ui.timer.textContent = (game.time + game.penalty - game.bonus).toFixed(2);
   const progress = Math.max(0, Math.min(1, -b.z / terrain.courseLength));
   ui.progress.style.width = `${progress * 100}%`;
   ui.progressPercent.textContent = `${Math.round(progress * 100)}%`;
@@ -575,6 +712,8 @@ function frame(now) {
   let steps = 0;
   while (accumulator >= DT && steps < 12) {
     simulate(input);
+    input.jump = 0;
+    jumpQueued = false;
     ghostRecorder.sample(game.time, game.bike);
     accumulator -= DT;
     steps += 1;
@@ -582,6 +721,14 @@ function frame(now) {
   if (steps === 12) accumulator = 0;
   interpolate(accumulator / DT);
   model.root.position.set(render.x, render.y, render.z);
+  const waveElapsed = game.waveMode ? (performance.now() - waveStartedAt) / 1000 : 0;
+  if (game.waveMode && waveElapsed >= 7) endWave();
+  model.setWavePose(game.waveMode, waveElapsed);
+  riderWorldPosition.set(game.bike.x, game.bike.y, game.bike.z);
+  if (game.waveMode && waveOtter) {
+    const waveAmount = Math.max(0, Math.min(1, (waveElapsed - 1.5) / 0.35));
+    world.updateWaveOtter(waveOtter, waveElapsed, riderWorldPosition, waveAmount);
+  }
   model.update(
     { ...game.bike, heading: render.heading, lean: render.lean },
     game.mode === 'riding' ? input : {},
@@ -614,7 +761,7 @@ function frame(now) {
     ghostModel.root.visible = false;
   }
   world.followSun(model.root.position);
-  world.update(game.time);
+  world.update(game.time, riderWorldPosition);
   dust.update(game.bike, game.mode === 'riding', dt);
   audio.update(game.bike, input, game.mode === 'riding', dt, game.timeScale);
   updateCamera(dt);

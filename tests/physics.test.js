@@ -14,6 +14,7 @@ import {
   WHEELBASE,
 } from '../src/physics/constants.js';
 import { createBike, stepBike } from '../src/physics/bike.js';
+import { airTimeBonus } from '../src/feel.js';
 import { createPlaneTerrain, createStepDropTerrain } from './helpers.js';
 
 const noInput = { throttle: 0, brake: 0, steer: 0 };
@@ -134,6 +135,38 @@ describe('bike physics', () => {
     airborne.airborne = true;
     stepBike(airborne, brake, terrain, [], DT);
     expect(airborne.skid).toBe(0);
+  });
+
+  it('hops about 0.45 m, observes cooldown, and stays below the air-bonus threshold', () => {
+    const terrain = createPlaneTerrain();
+    const bike = createBike({ x: 0, z: 0 }, terrain);
+    const jump = { ...noInput, jump: 1 };
+    stepBike(bike, jump, terrain, [], DT);
+    expect(bike.airborne).toBe(true);
+    expect(bike.jumpCooldown).toBeCloseTo(0.4);
+
+    let maxHeight = bike.y;
+    let airtime = 0;
+    for (let elapsed = 0; elapsed < 1 && bike.airborne; elapsed += DT) {
+      stepBike(bike, noInput, terrain, [], DT);
+      airtime += DT;
+      maxHeight = Math.max(maxHeight, bike.y);
+    }
+
+    expect(maxHeight).toBeCloseTo(0.45, 1);
+    expect(airtime).toBeCloseTo(0.6, 1);
+    expect(airTimeBonus(airtime)).toBe(0);
+
+    const cooldownBike = createBike({ x: 0, z: 0 }, terrain);
+    stepBike(cooldownBike, jump, terrain, [], DT);
+    cooldownBike.airborne = false;
+    cooldownBike.y = terrain.heightAt(cooldownBike.x, cooldownBike.z);
+    cooldownBike.vy = 0;
+    const cooldown = cooldownBike.jumpCooldown;
+    stepBike(cooldownBike, jump, terrain, [], DT);
+    expect(cooldownBike.jumpCooldown).toBeLessThan(cooldown);
+    expect(cooldownBike.jumpCooldown).toBeGreaterThan(0);
+    expect(cooldownBike.airborne).toBe(false);
   });
 
   it('turns toward positive x at low speed with the expected yaw rate', () => {
@@ -295,5 +328,28 @@ describe('bike physics', () => {
       stepBike(jumper, noInput, terrain, [log], DT);
     }
     expect(jumper.crashed).toBeNull();
+  });
+});
+
+describe('hop on a downhill', () => {
+  it('keeps the same short airtime at speed on a steep slope', () => {
+    const terrain = createPlaneTerrain(0.3);
+    const bike = createBike({ x: 0, z: 0 }, terrain);
+    bike.v = 25;
+    for (let i = 0; i < 240 && (bike.airborne || i < 12); i += 1) {
+      stepBike(bike, noInput, terrain, [], DT);
+    }
+    expect(bike.airborne).toBe(false);
+    expect(bike.v).toBeGreaterThan(15);
+    stepBike(bike, { ...noInput, jump: 1 }, terrain, [], DT);
+    let air = DT;
+    while (bike.airborne && air < 3) {
+      stepBike(bike, noInput, terrain, [], DT);
+      air += DT;
+    }
+    expect(bike.crashed).toBeFalsy();
+    expect(air).toBeGreaterThan(0.25);
+    expect(air).toBeLessThan(0.8);
+    expect(airTimeBonus(air)).toBe(0);
   });
 });

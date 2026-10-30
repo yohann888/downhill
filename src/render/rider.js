@@ -243,6 +243,8 @@ export function createRiderModel() {
 
   const fallbackRider = new THREE.Group();
   fallbackRiderMotion.add(fallbackRider);
+  let fallbackWaveArm;
+  let fallbackWaveForeArm;
   const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.17, 0.42, 4, 10), jerseyMat);
   torso.position.set(0, 1.32, 0.02);
   torso.rotation.x = -1.0;
@@ -252,7 +254,18 @@ export function createRiderModel() {
   head.scale.set(1, 0.9, 1.25);
   fallbackRider.add(head);
   for (const side of [-1, 1]) {
-    fallbackRider.add(bar(jerseyMat, [side * 0.18, 1.45, -0.12], [side * 0.34, 1.06, 0.06], 0.05));
+    if (side > 0) {
+      fallbackWaveArm = new THREE.Group();
+      fallbackWaveArm.position.set(0.18, 1.45, -0.12);
+      fallbackWaveForeArm = new THREE.Group();
+      fallbackWaveForeArm.position.set(0.08, -0.2, 0.08);
+      fallbackRider.add(fallbackWaveArm);
+      fallbackWaveArm.add(bar(jerseyMat, [0, 0, 0], [0.08, -0.2, 0.08], 0.05));
+      fallbackWaveArm.add(fallbackWaveForeArm);
+      fallbackWaveForeArm.add(bar(jerseyMat, [0, 0, 0], [0.08, -0.19, 0.1], 0.045));
+    } else {
+      fallbackRider.add(bar(jerseyMat, [side * 0.18, 1.45, -0.12], [side * 0.34, 1.06, 0.06], 0.05));
+    }
     fallbackRider.add(bar(pantsMat, [side * 0.12, 1.12, 0.22], [side * 0.14, 0.72, -0.08], 0.07));
     fallbackRider.add(bar(pantsMat, [side * 0.14, 0.72, -0.08], [side * 0.11, 0.36, 0.05], 0.055));
   }
@@ -288,6 +301,8 @@ export function createRiderModel() {
   let wasAirborne = false;
   let assetStatus = { ready: false, reason: 'Assets have not been applied' };
   let crashState = null;
+  let wavePoseActive = false;
+  let wavePoseTime = 0;
 
   function setAssets({ riderBody, bikeFrame, bikeWheel } = {}) {
     const failAssetSetup = (reason, details = {}) => {
@@ -583,7 +598,12 @@ export function createRiderModel() {
     const brake = THREE.MathUtils.clamp(bike.brake || 0, 0, 1);
     const standing = Math.min(0.08, Math.max(0, bike.v) * 0.004);
     const roughness = bike.slipping ? 0.045 : Math.min(0.025, Math.abs(grade) * 0.015);
-    let targetY = standing + roughness - (input.throttle && bike.v < 4 ? 0.05 : 0);
+    const jumpPose = bike.jumpCooldown > 0.3
+      ? -0.07
+      : bike.airborne && bike.jumpCooldown > 0
+        ? 0.06
+        : 0;
+    let targetY = standing + roughness + jumpPose - (input.throttle && bike.v < 4 ? 0.05 : 0);
     if (bike.airborne) targetY -= 0.015;
     stepSpring(postureY, targetY, dt, 10);
     stepSpring(postureZ, brake * 0.15 - (input.throttle ? 0.03 : 0), dt, 11);
@@ -662,12 +682,33 @@ export function createRiderModel() {
     const headPitch = -(torsoPitch.value + pitchSpring.value);
     rotateBoneAroundWorldAxis(riderBones.head, lateralWorld, headPitch);
     rotateBoneAroundWorldAxis(riderBones.head, forwardWorld, 1.3 * bike.lean);
+    if (wavePoseActive && riderBones.rightArm && riderBones.rightForeArm && riderBones.rightHand) {
+      const wave = Math.sin(wavePoseTime * Math.PI * 4) * THREE.MathUtils.degToRad(25);
+      riderBones.rightArm.quaternion
+        .copy(bindBones.get(riderBones.rightArm).quaternion)
+        .multiply(new THREE.Quaternion().setFromEuler(
+          new THREE.Euler(0, 0, -THREE.MathUtils.degToRad(150)),
+        ));
+      riderBones.rightForeArm.quaternion
+        .copy(bindBones.get(riderBones.rightForeArm).quaternion)
+        .multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, wave)));
+      riderBones.rightHand.quaternion.copy(bindBones.get(riderBones.rightHand).quaternion);
+    }
     root.updateMatrixWorld(true);
   }
 
   return {
     root,
     setAssets,
+    setWavePose(active, time) {
+      wavePoseActive = active;
+      wavePoseTime = time;
+      if (fallbackWaveArm && fallbackWaveForeArm) {
+        const wave = Math.sin(time * Math.PI * 4) * THREE.MathUtils.degToRad(25);
+        fallbackWaveArm.rotation.z = active ? THREE.MathUtils.degToRad(150) : 0;
+        fallbackWaveForeArm.rotation.z = active ? wave : 0;
+      }
+    },
     startCrash,
     resetCrash,
     getCrashFollowPosition() {
@@ -704,7 +745,15 @@ export function createRiderModel() {
         if (assetHolder.visible) {
           updateAssetPose(bike, input, grade, dt, speed01);
         } else {
-          const crouch = bike.airborne ? -0.1 : input.throttle ? -0.02 * Math.sin(cadenceSpring.value * 2) : -0.05;
+          const crouch = bike.jumpCooldown > 0.3
+            ? -0.1
+            : bike.airborne && bike.jumpCooldown > 0
+              ? 0.04
+              : bike.airborne
+                ? -0.1
+                : input.throttle
+                  ? -0.02 * Math.sin(cadenceSpring.value * 2)
+                  : -0.05;
           const shift = Math.max(0, Math.min(1, bike.brake)) * 0.12;
           fallbackRider.position.y += (crouch - fallbackRider.position.y) * (1 - Math.exp(-10 * dt));
           fallbackRider.position.z += (shift - fallbackRider.position.z) * (1 - Math.exp(-10 * dt));

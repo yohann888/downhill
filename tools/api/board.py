@@ -10,7 +10,7 @@ MAX_FRAMES = 6000
 TOP_SIZE = 50
 RUNS_PER_IP_HOUR = 30
 _NAME_PATTERN = re.compile(r"[A-Za-z0-9 _-]{1,12}\Z")
-_RUN_NUMBER_FIELDS = ("time", "penalties", "topSpeed", "crashes", "otterHits", "maxAir")
+_RUN_NUMBER_FIELDS = ("time", "penalties", "bonus", "topSpeed", "crashes", "otterHits", "maxAir")
 
 
 def _finite_number(value: Any, field: str) -> float:
@@ -73,20 +73,22 @@ def validate_run(body: Mapping[str, Any]) -> dict[str, Any]:
         raise ValueError("name must be 1 to 12 valid characters")
 
     values = {
-        field: _finite_number(body.get(field), field)
+        field: _finite_number(body.get(field, 0 if field == "bonus" else None), field)
         for field in _RUN_NUMBER_FIELDS
     }
     if not 20 < values["time"] < 600:
         raise ValueError("time must be between 20 and 600 seconds")
     if values["penalties"] < 0 or values["penalties"] >= values["time"]:
         raise ValueError("penalties must be nonnegative and less than time")
+    if values["bonus"] < 0 or values["bonus"] >= values["time"]:
+        raise ValueError("bonus must be nonnegative and less than time")
     if any(values[field] < 0 for field in ("topSpeed", "crashes", "otterHits", "maxAir")):
         raise ValueError("run statistics must be nonnegative")
     if not values["crashes"].is_integer() or not values["otterHits"].is_integer():
         raise ValueError("crashes and otterHits must be whole numbers")
 
     ghost = quantize_ghost(body.get("ghost"))
-    expected_duration = values["time"] - values["penalties"]
+    expected_duration = values["time"] - values["penalties"] + values["bonus"]
     recorded_duration = len(ghost["frames"]) * ghost["dt"]
     if not 0.8 * expected_duration <= recorded_duration <= 1.2 * expected_duration:
         raise ValueError("ghost duration must be within 20 percent of run time")
@@ -115,6 +117,7 @@ def insert_top(
         "name": run["name"],
         "time": float(run["time"]),
         "penalties": float(run["penalties"]),
+        "bonus": float(run.get("bonus", 0)),
         "topSpeed": float(run["topSpeed"]),
         "ts": float(timestamp),
     }

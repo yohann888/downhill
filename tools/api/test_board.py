@@ -28,6 +28,16 @@ def test_validate_run_trims_name_and_quantizes_ghost():
 
     assert run["name"] == "Rider"
     assert run["ghost"]["frames"][0] == [0.0, 1.23, 2.0, 0.0, 0.0]
+    assert run["bonus"] == 0
+
+
+def test_validate_run_includes_bonus_in_simulated_ghost_duration():
+    run = validate_run(valid_run(
+        bonus=2,
+        ghost={"dt": 0.1, "frames": [[0, 0, 0, 0, 0] for _ in range(300)]},
+    ))
+
+    assert run["bonus"] == 2
 
 
 @pytest.mark.parametrize(
@@ -40,6 +50,8 @@ def test_validate_run_trims_name_and_quantizes_ghost():
         ({"time": 600}, "time"),
         ({"topSpeed": math.inf}, "topSpeed"),
         ({"maxAir": math.nan}, "maxAir"),
+        ({"bonus": -0.1}, "bonus"),
+        ({"bonus": 30}, "bonus"),
         ({"extra": math.nan}, "extra"),
         ({"crashes": 0.5}, "whole numbers"),
         (
