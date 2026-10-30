@@ -148,7 +148,7 @@ const CRASH_TEXT = {
   washout: 'Washed out',
   'hard landing': 'Cased it',
   'off course': 'Off course',
-  rock: 'Hit a rock',
+  rock: 'Ottified!',
   stump: 'Hit a stump',
   log: 'Hit a log',
   tree: 'Hit a tree',
@@ -197,7 +197,7 @@ function simulate(input) {
     game.crashedSinceCheckpoint = true;
     game.penalty += CRASH_PENALTY;
     game.crashTimer = RESPAWN_DELAY;
-    audio.event('crash');
+    audio.event('crash', b.crashed);
     flash(`${CRASH_TEXT[b.crashed] || 'Crashed'}  +${CRASH_PENALTY}s`, 1500);
   } else if (b.z <= terrain.finishZ) {
     game.mode = 'finished';

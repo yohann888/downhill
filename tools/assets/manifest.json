@@ -20,6 +20,7 @@
     { "name": "freewheel-loop", "prompt": "bicycle freewheel hub ticking while coasting", "seconds": 3, "loop": true },
     { "name": "pedal-loop", "prompt": "bicycle chain and drivetrain whirr while pedaling hard", "seconds": 3, "loop": true },
     { "name": "crash", "prompt": "mountain biker crash, body and bike tumbling on dirt and rocks", "seconds": 2.5 },
+    { "name": "otter-hit", "prompt": "cartoon otter squeak and surprised chirp, then a comedic boing and soft thud, playful, short, no music", "seconds": 2 },
     { "name": "land", "prompt": "mountain bike landing a jump on packed dirt, suspension thud", "seconds": 1 },
     { "name": "checkpoint", "prompt": "short bright ding, video game checkpoint chime", "seconds": 1 },
     { "name": "finish-cheer", "prompt": "small crowd cheering with cowbells at a mountain bike race finish line", "seconds": 4 },
@@ -35,6 +36,7 @@
       { "name": "vo-clean", "text": "Clean line!" },
       { "name": "vo-air", "text": "Big air!" },
       { "name": "vo-crash", "text": "Ooh, that's gotta hurt." },
+      { "name": "vo-ottified", "text": "Ottified!" },
       { "name": "vo-checkpoint", "text": "Checkpoint!" },
       { "name": "vo-best", "text": "New personal best!" },
       { "name": "vo-send", "text": "Send it!" }

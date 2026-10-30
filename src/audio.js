@@ -1,6 +1,6 @@
 const BASE = './assets/audio/';
 const LOOPS = ['tire-gravel-loop', 'wind-loop', 'freewheel-loop', 'pedal-loop', 'forest-loop', 'brake-skid'];
-const ONESHOTS = ['crash', 'land', 'checkpoint', 'finish-cheer', 'vo-go', 'vo-clean', 'vo-air', 'vo-crash', 'vo-checkpoint', 'vo-best', 'vo-send'];
+const ONESHOTS = ['crash', 'otter-hit', 'land', 'checkpoint', 'finish-cheer', 'vo-go', 'vo-clean', 'vo-air', 'vo-crash', 'vo-ottified', 'vo-checkpoint', 'vo-best', 'vo-send'];
 const clamp01 = (value) => Math.min(1, Math.max(0, value));
 
 export function createAudio() {
@@ -130,7 +130,11 @@ export function createAudio() {
       }
       if (name === 'land') play('land', 0.8);
       if (name === 'kicker') playVoice(value > 12 ? 'vo-send' : 'vo-air');
-      if (name === 'crash') { play('crash', 0.9); playVoice('vo-crash'); }
+      if (name === 'crash') {
+        const isRock = value === 'rock';
+        play(isRock ? 'otter-hit' : 'crash', 0.9);
+        playVoice(isRock ? 'vo-ottified' : 'vo-crash');
+      }
       if (name === 'finish') play('finish-cheer', 0.8);
       if (name === 'best') playVoice('vo-best');
     },
