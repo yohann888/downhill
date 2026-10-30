@@ -222,7 +222,6 @@ export function stepBike(state, input, terrain, obstacles, dt) {
       if (impactSpeed > HARD_LANDING_VN) {
         state.crashed = 'hard landing';
       } else if (impactSpeed >= HEAVY_LANDING_VN) {
-        state.v *= 0.85;
         state.heavyLanding = true;
       }
       state.y = groundY;

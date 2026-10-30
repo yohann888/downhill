@@ -20,10 +20,12 @@ describe('nextQualityLevel', () => {
 });
 
 describe('airTimeBonus', () => {
-  it('awards rounded airtime bonuses only above the threshold and halves heavy landings', () => {
+  it('awards larger rounded bonuses for big air only above the threshold', () => {
     expect(airTimeBonus(0.8)).toBe(0);
-    expect(airTimeBonus(1.7)).toBe(1.2);
-    expect(airTimeBonus(1.7, true)).toBe(0.6);
-    expect(airTimeBonus(10)).toBe(3);
+    expect(airTimeBonus(1.0)).toBe(0.8);
+    expect(airTimeBonus(2.0)).toBe(2.3);
+    expect(airTimeBonus(5.0)).toBe(6.0);
+    expect(airTimeBonus(Number.NaN)).toBe(0);
+    expect(airTimeBonus(Number.POSITIVE_INFINITY)).toBe(0);
   });
 });

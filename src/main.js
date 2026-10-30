@@ -431,7 +431,7 @@ function simulate(input) {
   }
   if (wasAir && !b.airborne && !b.crashed) {
     audio.event('land');
-    const bonus = airTimeBonus(game.airTime, b.heavyLanding);
+    const bonus = airTimeBonus(game.airTime);
     game.bonus += bonus;
     if (bonus > 0) flash(`Big air -${bonus.toFixed(1)}s`, 1200);
   }
