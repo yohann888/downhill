@@ -9,15 +9,23 @@ import { createDust } from './render/dust.js';
 import { createAudio } from './audio.js';
 import { loadModels } from './render/assets.js';
 import { createPost } from './render/post.js';
+import { nextQualityLevel, slowMoTarget } from './feel.js';
 
 const CRASH_PENALTY = 3;
 const RESPAWN_DELAY = 1.6;
+const queryParams = new URLSearchParams(window.location.search);
+const qualityMode = queryParams.get('quality');
+const initialQuality = qualityMode === 'low' ? 3 : 0;
+const autoQualityEnabled = qualityMode !== 'high';
+const debug = queryParams.has('debug');
 
 const canvas = document.getElementById('game');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setPixelRatio(
+  initialQuality >= 3 ? 0.75 : initialQuality >= 2 ? 1 : Math.min(window.devicePixelRatio, 2),
+);
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.shadowMap.enabled = true;
+renderer.shadowMap.enabled = initialQuality < 2;
 renderer.shadowMap.type = THREE.PCFShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 0.9;
@@ -28,7 +36,7 @@ const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerH
 const terrain = createTerrain();
 const obstacles = createObstacles(terrain);
 const world = buildWorld(scene, renderer, terrain, obstacles);
-const post = new URLSearchParams(window.location.search).has('nopost')
+const post = queryParams.has('nopost')
   ? { render: () => renderer.render(scene, camera), setSize() {} }
   : createPost(renderer, scene, camera);
 const model = createRiderModel();
@@ -92,9 +100,16 @@ const game = {
   crashTimer: 0,
   maxSpeed: 0,
   airTime: 0,
+  timeScale: 1,
+  quality: initialQuality,
+  qualityFps: null,
+  assetsReady: false,
   crashedSinceCheckpoint: false,
+  trauma: 0,
   best: Number(localStorage.getItem('downhill-best')) || null,
 };
+let slowMoRealTime = 0;
+let slowMoLocked = false;
 
 function snapshot(b) {
   return { x: b.x, y: b.y, z: b.z, heading: b.heading, lean: b.lean };
@@ -121,6 +136,9 @@ function start() {
   game.penalty = 0;
   game.checkpoint = -1;
   game.maxSpeed = 0;
+  game.timeScale = 1;
+  slowMoRealTime = 0;
+  slowMoLocked = false;
   game.crashedSinceCheckpoint = false;
   ui.overlay.classList.add('hidden');
   snapCamera();
@@ -131,7 +149,11 @@ function respawn(manual) {
   const cp = terrain.checkpoints[game.checkpoint];
   const p = cp ? { x: cp.x, z: cp.z, heading: cp.heading } : startPose();
   placeBike(p.x, p.z, p.heading, cp ? 5 : 0);
+  model.resetCrash();
   game.airTime = 0;
+  game.timeScale = 1;
+  slowMoRealTime = 0;
+  slowMoLocked = false;
   game.mode = 'riding';
   snapCamera();
 }
@@ -173,6 +195,12 @@ function simulate(input) {
   const wasAir = b.airborne;
   stepBike(b, input, terrain, obstacles, DT);
   game.time += DT;
+  if (b.landingImpact > 0) {
+    game.trauma = Math.min(
+      1,
+      game.trauma + Math.max(0, Math.min(1, (b.landingImpact - 4) / 7)),
+    );
+  }
   if (b.airborne) game.airTime += DT;
   if (!wasAir && b.airborne) {
     const kicker = terrain.kickers.find((item) => Math.abs(item.z - b.z) < 8);
@@ -194,9 +222,13 @@ function simulate(input) {
   }
   if (b.crashed) {
     game.mode = 'crashed';
+    game.trauma = 1;
+    game.crashHeading = b.heading;
     game.crashedSinceCheckpoint = true;
     game.penalty += CRASH_PENALTY;
     game.crashTimer = RESPAWN_DELAY;
+    model.root.position.set(b.x, b.y, b.z);
+    model.startCrash({ v: b.v, heading: b.heading, reason: b.crashed });
     audio.event('crash', b.crashed);
     flash(`${CRASH_TEXT[b.crashed] || 'Crashed'}  +${CRASH_PENALTY}s`, 1500);
   } else if (b.z <= terrain.finishZ) {
@@ -217,7 +249,7 @@ function simulate(input) {
   }
 }
 
-const cam = { pos: new THREE.Vector3(), look: new THREE.Vector3(), fov: 65, shake: 0 };
+const cam = { pos: new THREE.Vector3(), look: new THREE.Vector3(), fov: 65 };
 const render = { x: 0, y: 0, z: 0, heading: 0, lean: 0 };
 
 function interpolate(alpha) {
@@ -231,12 +263,15 @@ function interpolate(alpha) {
 }
 
 function cameraTarget(out, look) {
-  const fx = Math.sin(render.heading);
-  const fz = -Math.cos(render.heading);
-  out.set(render.x - fx * 6.2, render.y + 2.5, render.z - fz * 6.2);
+  const crashFocus = game.mode === 'crashed' ? model.getCrashFollowPosition() : null;
+  const focus = crashFocus || render;
+  const heading = crashFocus ? game.crashHeading : render.heading;
+  const fx = Math.sin(heading);
+  const fz = -Math.cos(heading);
+  out.set(focus.x - fx * 6.2, focus.y + 2.5, focus.z - fz * 6.2);
   const ground = terrain.heightAt(out.x, out.z) + 1.2;
   if (out.y < ground) out.y = ground;
-  look.set(render.x + fx * 5, render.y + 0.9, render.z + fz * 5);
+  look.set(focus.x + fx * 5, focus.y + 0.9, focus.z + fz * 5);
 }
 
 function snapCamera() {
@@ -246,7 +281,16 @@ function snapCamera() {
 
 const tmpPos = new THREE.Vector3();
 const tmpLook = new THREE.Vector3();
-let wasAirborne = false;
+const shakeOffset = new THREE.Vector3();
+let shakeTime = 0;
+
+function smoothNoise(time, phase) {
+  return (
+    Math.sin(time * 2.1 + phase)
+    + 0.5 * Math.sin(time * 3.7 + phase * 1.7)
+    + 0.25 * Math.sin(time * 6.3 + phase * 2.3)
+  ) / 1.75;
+}
 
 function updateCamera(dt) {
   const b = game.bike;
@@ -254,15 +298,17 @@ function updateCamera(dt) {
   const k = 1 - Math.exp(-(game.mode === 'crashed' ? 1.5 : 6) * dt);
   cam.pos.lerp(tmpPos, k);
   cam.look.lerp(tmpLook, 1 - Math.exp(-10 * dt));
-  if (wasAirborne && !b.airborne) cam.shake = Math.min(0.35, 0.08 + Math.abs(b.vy) * 0.02);
-  wasAirborne = b.airborne;
-  const rough = !b.airborne && b.v > 4 ? Math.min(0.03, b.v * 0.0012) + (b.slipping ? 0.04 : 0) : 0;
-  cam.shake = Math.max(cam.shake * Math.exp(-6 * dt), rough);
-  const t = performance.now() * 0.001;
-  camera.position.copy(cam.pos);
-  camera.position.x += Math.sin(t * 37) * cam.shake * 0.5;
-  camera.position.y += Math.sin(t * 43 + 1) * cam.shake * 0.5;
+  game.trauma = Math.max(0, game.trauma - 2.5 * dt);
+  shakeTime += dt;
+  const traumaScale = game.trauma * game.trauma;
+  shakeOffset.set(
+    smoothNoise(shakeTime, 0.4),
+    smoothNoise(shakeTime, 1.7),
+    smoothNoise(shakeTime, 3.2),
+  ).multiplyScalar(0.25 * traumaScale);
+  camera.position.copy(cam.pos).add(shakeOffset);
   camera.lookAt(cam.look);
+  camera.rotateZ(smoothNoise(shakeTime, 4.8) * 0.04 * traumaScale);
   const targetFov = 62 + Math.min(20, b.v * 0.8);
   cam.fov += (targetFov - cam.fov) * (1 - Math.exp(-3 * dt));
   camera.fov = cam.fov;
@@ -284,10 +330,65 @@ function updateHud() {
 
 let accumulator = 0;
 let last = performance.now();
+let assetsReady = false;
+let qualityWindowElapsed = 0;
+let qualityFrameCount = 0;
+
+function applyQualityLevel(level) {
+  game.quality = level;
+  renderer.shadowMap.enabled = level < 2;
+  const pixelRatio = level >= 3
+    ? 0.75
+    : level >= 2
+      ? 1
+      : Math.min(window.devicePixelRatio, 2);
+  if (renderer.getPixelRatio() !== pixelRatio) {
+    renderer.setPixelRatio(pixelRatio);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    post.setSize(window.innerWidth, window.innerHeight);
+  }
+}
+
+function updateAutoQuality(realDt) {
+  if (!autoQualityEnabled || !assetsReady) return;
+  qualityWindowElapsed += realDt;
+  qualityFrameCount += 1;
+  if (qualityWindowElapsed < 3) return;
+  const avgFps = qualityFrameCount / qualityWindowElapsed;
+  game.qualityFps = avgFps;
+  const nextLevel = nextQualityLevel(avgFps, game.quality);
+  if (nextLevel !== game.quality) applyQualityLevel(nextLevel);
+  qualityWindowElapsed = 0;
+  qualityFrameCount = 0;
+}
+
+function updateTimeScale(realDt) {
+  const bike = game.bike;
+  const airborne = game.mode === 'riding' && bike.airborne;
+  if (!airborne) {
+    slowMoRealTime = 0;
+    slowMoLocked = false;
+  }
+  const heightAboveGround = Math.max(0, bike.y - terrain.heightAt(bike.x, bike.z));
+  const target = game.mode === 'riding'
+    ? slowMoTarget(bike, heightAboveGround, game.airTime)
+    : 1;
+  if (!slowMoLocked && (target < 1 || game.timeScale < 1)) {
+    slowMoRealTime += realDt;
+    if (slowMoRealTime >= 1.2) slowMoLocked = true;
+  }
+  const effectiveTarget = slowMoLocked ? 1 : target;
+  const maxChange = 8 * realDt;
+  game.timeScale += Math.max(-maxChange, Math.min(maxChange, effectiveTarget - game.timeScale));
+}
+
 function frame(now) {
-  const dt = Math.min(0.1, (now - last) / 1000);
+  const frameDt = Math.max(0, (now - last) / 1000);
+  const dt = Math.min(0.1, frameDt);
   last = now;
-  accumulator += dt;
+  updateAutoQuality(frameDt);
+  updateTimeScale(frameDt);
+  accumulator += dt * game.timeScale;
   const input = readInput();
   let steps = 0;
   while (accumulator >= DT && steps < 12) {
@@ -298,13 +399,20 @@ function frame(now) {
   if (steps === 12) accumulator = 0;
   interpolate(accumulator / DT);
   model.root.position.set(render.x, render.y, render.z);
-  model.update({ ...game.bike, heading: render.heading, lean: render.lean }, game.mode === 'riding' ? input : {}, gradeAt(game.bike), dt);
+  model.update(
+    { ...game.bike, heading: render.heading, lean: render.lean },
+    game.mode === 'riding' ? input : {},
+    gradeAt(game.bike),
+    dt,
+    terrain.heightAt,
+  );
   world.followSun(model.root.position);
   dust.update(game.bike, game.mode === 'riding', dt);
-  audio.update(game.bike, input, game.mode === 'riding', dt);
+  audio.update(game.bike, input, game.mode === 'riding', dt, game.timeScale);
   updateCamera(dt);
   updateHud();
-  post.render();
+  if (game.quality >= 1) renderer.render(scene, camera);
+  else post.render();
   requestAnimationFrame(frame);
 }
 
@@ -318,10 +426,8 @@ window.addEventListener('resize', () => {
 const p = startPose();
 placeBike(p.x, p.z, p.heading, 0);
 snapCamera();
-const debug = new URLSearchParams(window.location.search).has('debug');
 const modelNames = ['rider-body', 'bike-frame', 'bike-wheel', 'boulder', 'rock-flat', 'stump', 'log', 'pine-a', 'pine-b', 'otter'];
 if (debug) {
-  game.assetsReady = false;
   game.assetStatus = { state: 'loading', loaded: [], missing: [] };
   window.__assetLoadErrors = {};
   window.__riderModel = model;
@@ -336,6 +442,10 @@ loadModels(modelNames).then((models) => {
     })
     : false;
   world.applyModels(models);
+  assetsReady = Boolean(riderApplied);
+  game.assetsReady = assetsReady;
+  qualityWindowElapsed = 0;
+  qualityFrameCount = 0;
   if (debug) {
     game.assetStatus = {
       state: riderApplied ? 'ready' : 'fallback',
@@ -344,12 +454,12 @@ loadModels(modelNames).then((models) => {
       rider: model.getAssetStatus(),
       loadErrors: { ...window.__assetLoadErrors },
     };
-    game.assetsReady = Boolean(riderApplied);
   }
 }).catch((error) => {
+  assetsReady = false;
+  game.assetsReady = false;
   if (debug) {
     game.assetStatus = { state: 'error', error: String(error), loadErrors: { ...window.__assetLoadErrors } };
-    game.assetsReady = false;
   }
 });
 if (debug) {
@@ -360,7 +470,8 @@ if (debug) {
   window.__captureFrame = (position, target) => {
     camera.position.fromArray(position);
     camera.lookAt(new THREE.Vector3(...target));
-    post.render();
+    if (game.quality >= 1) renderer.render(scene, camera);
+    else post.render();
     return renderer.domElement.toDataURL('image/png');
   };
 }

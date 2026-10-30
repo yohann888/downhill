@@ -202,10 +202,12 @@ describe('bike physics', () => {
     expect(bike.airborne).toBe(false);
     expect(bike.crashed).toBeNull();
     expect(bike.heavyLanding).toBe(true);
+    expect(bike.landingImpact).toBeCloseTo(Math.sqrt(2 * G * 4), 0);
     expect(bike.v).toBeLessThan(10);
 
     stepBike(bike, noInput, createPlaneTerrain(), [], DT);
     expect(bike.heavyLanding).toBe(false);
+    expect(bike.landingImpact).toBe(0);
   });
 
   it('crashes on a 7m fall onto flat ground', () => {

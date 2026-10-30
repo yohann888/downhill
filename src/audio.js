@@ -7,6 +7,7 @@ export function createAudio() {
   let ctx = null;
   let master = null;
   let musicGain = null;
+  let musicSource = null;
   let voiceSource = null;
   const buffers = {};
   const loops = {};
@@ -88,13 +89,13 @@ export function createAudio() {
       for (const name of LOOPS) startLoop(name);
       setLoop('forest-loop', 0.35);
       if (buffers['music-ride']) {
-        const source = ctx.createBufferSource();
-        source.buffer = buffers['music-ride'];
-        source.loop = true;
+        musicSource = ctx.createBufferSource();
+        musicSource.buffer = buffers['music-ride'];
+        musicSource.loop = true;
         musicGain = ctx.createGain();
         musicGain.gain.value = 0.25;
-        source.connect(musicGain).connect(master);
-        source.start();
+        musicSource.connect(musicGain).connect(master);
+        musicSource.start();
       }
     },
     toggleMute() {
@@ -109,17 +110,23 @@ export function createAudio() {
       if (master) master.gain.setTargetAtTime(muted ? 0 : volume, ctx.currentTime, 0.05);
       return volume;
     },
-    update(bike, input, riding, dt) {
+    update(bike, input, riding, dt, timeScale = 1) {
       if (!ctx) return;
       const v = riding ? bike.v : 0;
       const grounded = riding && !bike.airborne;
       const speed01 = Math.min(1, v / 20);
-      setLoop('tire-gravel-loop', grounded ? 0.15 + speed01 * 0.6 : 0, 0.8 + speed01 * 0.5);
-      setLoop('wind-loop', riding ? speed01 * speed01 * 0.8 : 0, 0.85 + speed01 * 0.35);
-      setLoop('pedal-loop', grounded && input.throttle ? 0.45 : 0, 0.9 + speed01 * 0.4);
-      setLoop('freewheel-loop', grounded && !input.throttle && v > 1 ? 0.18 : 0, 0.8 + speed01 * 0.6);
+      const playbackRateScale = timeScale < 0.999 ? 0.85 : 1;
+      const rate = (base) => base * playbackRateScale;
+      if (musicSource) {
+        musicSource.playbackRate.setTargetAtTime(playbackRateScale, ctx.currentTime, 0.1);
+      }
+      setLoop('forest-loop', 0.35, playbackRateScale);
+      setLoop('tire-gravel-loop', grounded ? 0.15 + speed01 * 0.6 : 0, rate(0.8 + speed01 * 0.5));
+      setLoop('wind-loop', riding ? speed01 * speed01 * 0.8 : 0, rate(0.85 + speed01 * 0.35));
+      setLoop('pedal-loop', grounded && input.throttle ? 0.45 : 0, rate(0.9 + speed01 * 0.4));
+      setLoop('freewheel-loop', grounded && !input.throttle && v > 1 ? 0.18 : 0, rate(0.8 + speed01 * 0.6));
       const skid = grounded ? Math.max(clamp01(bike.brake), bike.slipping ? 0.8 : 0) : 0;
-      setLoop('brake-skid', 0.35 * skid * speed01, 0.9 + speed01 * 0.3);
+      setLoop('brake-skid', 0.35 * skid * speed01, rate(0.9 + speed01 * 0.3));
     },
     event(name, value) {
       if (!ctx) return;
