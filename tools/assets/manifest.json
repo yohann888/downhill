@@ -1,7 +1,10 @@
 {
   "models": [
     { "name": "rider", "prompt": "full-body downhill mountain bike rider, full-face helmet with goggles, teal and charcoal long-sleeve jersey, black baggy riding shorts, knee pads, gloves, flat shoes, athletic build, standing in T-pose with arms straight out", "polycount": 12000, "rig": true },
-    { "name": "bike-frame", "prompt": "full-suspension downhill mountain bike without wheels: frame, rear shock, front suspension fork, wide handlebars, saddle, cranks and flat pedals; bright orange frame with black components", "polycount": 8000 },
+    { "name": "rider-body", "prompt": "athletic young man, full-face helmet with goggles, teal and charcoal long-sleeve jersey, black pants, knee pads, gloves, flat shoes, T-pose, arms straight out to the sides, standing, full body", "polycount": 12000, "rig": true, "source": "Rosebud rosie-3d", "source_prompt": "athletic young man, full-face mountain bike helmet with goggles, teal and charcoal long-sleeve jersey, black pants, knee pads, gloves, flat shoes, standing in T-pose with arms straight out to the sides, full body, realistic" },
+    { "name": "bike-body", "prompt": "full suspension enduro mountain bike frame with fork, handlebar, stem, seat, cranks and pedals, orange frame, NO wheels, NO tires, no rims, side view, clean", "polycount": 8000 },
+    { "name": "otter", "image": "ref/otter.png", "polycount": 8000, "rig": false, "model_type": "standard", "ai_model": "meshy-6-lite", "should_texture": true, "enable_pbr": true, "texture_resolution": "2k", "source": "Rosebud rosie-3d", "source_prompt": "cute chubby cartoon otter mascot sitting upright on its bottom, holding an open grey laptop on its lap, orange fur, white muzzle and cheeks, black nose, small round ears, thick tail on the ground, stylized toy figure, full 3D, front facing" },
+    { "name": "bike-frame", "prompt": "full-suspension downhill mountain bike without wheels: frame, rear shock, front suspension fork, wide handlebars, saddle, cranks and flat pedals; bright orange frame with black components", "polycount": 8000, "source": "Rosebud rosie-3d", "source_prompt": "bare full suspension enduro mountain bike frame with front fork, handlebar, stem, saddle, crankset and pedals, orange frame, wheels removed, no wheels, no tires, no rims, empty dropouts, side view" },
     { "name": "bike-wheel", "prompt": "single 29 inch mountain bike wheel, black knobby tire, black rim and spokes, center hub, front view", "polycount": 3000 },
     { "name": "boulder", "prompt": "large weathered granite boulder with patches of lichen", "polycount": 2000 },
     { "name": "rock-flat", "prompt": "low flat mossy rock embedded in a dirt trail", "polycount": 1500 },
@@ -13,7 +16,7 @@
   "sfx": [
     { "name": "tire-gravel-loop", "prompt": "mountain bike tires rolling fast on a dry gravel trail, continuous, no wind", "seconds": 6, "loop": true },
     { "name": "wind-loop", "prompt": "strong wind rushing past a helmet at high speed, continuous", "seconds": 6, "loop": true },
-    { "name": "brake-skid", "prompt": "mountain bike rear tire skidding on loose dirt with a short disc brake squeal", "seconds": 2 },
+    { "name": "brake-skid", "prompt": "mountain bike rear tire sliding and skidding on loose gravel, crunching gravel spray, dirt scrape, no rubber squeal, no screech, no brake squeal", "seconds": 1.5 },
     { "name": "freewheel-loop", "prompt": "bicycle freewheel hub ticking while coasting", "seconds": 3, "loop": true },
     { "name": "pedal-loop", "prompt": "bicycle chain and drivetrain whirr while pedaling hard", "seconds": 3, "loop": true },
     { "name": "crash", "prompt": "mountain biker crash, body and bike tumbling on dirt and rocks", "seconds": 2.5 },

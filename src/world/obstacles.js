@@ -37,7 +37,11 @@ export function createObstacles(terrain, seed = 7) {
     const types = ['rock', 'stump', 'log'];
     const type = types[Math.floor(random() * types.length)];
     const r =
-      type === 'rock' ? 0.4 + random() * 0.5 : type === 'stump' ? 0.3 : 0.2;
+      type === 'rock'
+        ? (0.4 + random() * 0.5) * 1.5
+        : type === 'stump'
+          ? 0.3
+          : 0.2;
     const length = type === 'log' ? 1 + random() * 0.8 : 0;
     const minOffset = Math.max(0, 1.6 + r + length / 2 - hw);
     const maxOffset = Math.max(
@@ -52,7 +56,12 @@ export function createObstacles(terrain, seed = 7) {
       x,
       z,
       r,
-      h: type === 'rock' ? 0.4 + random() * 0.5 : type === 'stump' ? 0.5 : 0.4,
+      h:
+        type === 'rock'
+          ? (0.4 + random() * 0.5) * 1.5
+          : type === 'stump'
+            ? 0.5
+            : 0.4,
       rot: random() * Math.PI * 2,
     };
 

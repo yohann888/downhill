@@ -3,11 +3,14 @@ import { Sky } from 'three/examples/jsm/objects/Sky.js';
 import { createRandom, createValueNoise } from '../world/noise.js';
 import { crossProfile } from '../world/terrain.js';
 import { unitMesh } from './assets.js';
+import { createGroundMaterial, loadGroundTextures } from './ground.js';
 
 const smoothstep = (a, b, v) => {
   const t = Math.min(1, Math.max(0, (v - a) / (b - a)));
   return t * t * (3 - 2 * t);
 };
+
+const SKY_ROTATION = 1.92;
 
 const SUN_DIRECTION = new THREE.Vector3().setFromSphericalCoords(
   1,
@@ -25,7 +28,7 @@ function acrossOffsets() {
   return offsets;
 }
 
-function buildCourseMesh(terrain) {
+function buildCourseMesh(terrain, groundTextures) {
   const { farHeight } = createFarHeight(terrain);
   const offsets = acrossOffsets();
   const tint = createValueNoise(11);
@@ -34,12 +37,7 @@ function buildCourseMesh(terrain) {
   const cols = offsets.length;
   const positions = new Float32Array(rows.length * cols * 3);
   const colors = new Float32Array(rows.length * cols * 3);
-  const dirt = new THREE.Color(0x6b4a2f);
-  const dirtLight = new THREE.Color(0x8a6744);
-  const grass = new THREE.Color(0x3f6a2a);
-  const grassDry = new THREE.Color(0x6f7a3a);
-  const rock = new THREE.Color(0x77736b);
-  const color = new THREE.Color();
+  const splat = new Float32Array(rows.length * cols * 2);
   let p = 0;
   for (const z of rows) {
     const cx = terrain.centerX(z);
@@ -54,17 +52,15 @@ function buildCourseMesh(terrain) {
       positions[p + 1] = y;
       positions[p + 2] = z;
       const n = tint(x / 6, z / 6) * 0.5 + 0.5;
+      const m = tint(x / 40 + 9, z / 40) * 0.5 + 0.5;
       const ad = Math.abs(d);
-      if (ad <= hw) {
-        color.copy(dirt).lerp(dirtLight, n * 0.7);
-      } else {
-        color.copy(grass).lerp(grassDry, n * 0.6);
-        color.lerp(rock, smoothstep(30, 90, ad) * (0.4 + 0.5 * n));
-        color.lerp(dirt, 1 - smoothstep(hw, hw + 1.2, ad));
-      }
-      colors[p] = color.r;
-      colors[p + 1] = color.g;
-      colors[p + 2] = color.b;
+      const q = (p / 3) * 2;
+      splat[q] = 1 - smoothstep(hw - 0.5 + (n - 0.5) * 0.8, hw + 0.9 + (n - 0.5) * 1.2, ad);
+      splat[q + 1] = smoothstep(30, 90, ad) * (0.4 + 0.5 * n);
+      const t = 0.82 + 0.3 * n;
+      colors[p] = t * (1 + 0.12 * (m - 0.5));
+      colors[p + 1] = t;
+      colors[p + 2] = t * (0.94 - 0.1 * (m - 0.5));
       p += 3;
     }
   }
@@ -83,10 +79,13 @@ function buildCourseMesh(terrain) {
   geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   geometry.setIndex(index);
   geometry.computeVertexNormals();
-  const mesh = new THREE.Mesh(
-    geometry,
-    new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 }),
-  );
+  const normals = geometry.attributes.normal;
+  for (let i = 0; i < normals.count; i += 1) {
+    const steep = smoothstep(0.9, 0.72, normals.getY(i));
+    splat[i * 2 + 1] = Math.max(splat[i * 2 + 1], steep) * (1 - splat[i * 2]);
+  }
+  geometry.setAttribute('splat', new THREE.BufferAttribute(splat, 2));
+  const mesh = new THREE.Mesh(geometry, createGroundMaterial(groundTextures));
   mesh.receiveShadow = true;
   return mesh;
 }
@@ -133,7 +132,7 @@ function createFarHeight(terrain) {
   return { farHeight, lakeY };
 }
 
-function buildRangeMesh(terrain) {
+function buildRangeMesh(terrain, groundTextures) {
   const size = 7000;
   const segments = 260;
   const geometry = new THREE.PlaneGeometry(size, size, segments, segments);
@@ -143,9 +142,10 @@ function buildRangeMesh(terrain) {
   const detail = createValueNoise(29);
   const pos = geometry.attributes.position;
   const colors = new Float32Array(pos.count * 3);
-  const forest = new THREE.Color(0x2f4424);
-  const stone = new THREE.Color(0x6f6d6a);
-  const snow = new THREE.Color(0xf4f2ee);
+  const splat = new Float32Array(pos.count * 2);
+  const forest = new THREE.Color(0.42, 0.55, 0.36);
+  const stone = new THREE.Color(1, 1, 1);
+  const snow = new THREE.Color(2.4, 2.45, 2.6);
   const color = new THREE.Color();
   for (let i = 0; i < pos.count; i += 1) {
     const x = pos.getX(i);
@@ -154,18 +154,18 @@ function buildRangeMesh(terrain) {
     const y = far.y - 45 * (1 - smoothstep(210, 255, far.distance));
     pos.setY(i, y);
     const rel = y - lakeY;
-    color.copy(forest).lerp(stone, smoothstep(180, 340, rel));
-    color.lerp(snow, smoothstep(380, 470, rel + detail(x / 40, z / 40) * 30));
+    const stoneW = smoothstep(140, 260, rel);
+    const snowW = smoothstep(290, 360, rel + detail(x / 40, z / 40) * 40);
+    color.copy(forest).lerp(stone, stoneW).lerp(snow, snowW);
+    splat[i * 2 + 1] = Math.max(stoneW, snowW);
     colors[i * 3] = color.r;
     colors[i * 3 + 1] = color.g;
     colors[i * 3 + 2] = color.b;
   }
   geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  geometry.setAttribute('splat', new THREE.BufferAttribute(splat, 2));
   geometry.computeVertexNormals();
-  const mesh = new THREE.Mesh(
-    geometry,
-    new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: true }),
-  );
+  const mesh = new THREE.Mesh(geometry, createGroundMaterial(groundTextures, { scale: 9, normalStrength: 0.6 }));
   mesh.receiveShadow = false;
   const lake = new THREE.Mesh(
     new THREE.PlaneGeometry(5000, 2600).rotateX(-Math.PI / 2),
@@ -185,7 +185,7 @@ function buildTrees(terrain, obstacles) {
   for (let s = -30; s <= terrain.courseLength + 50; s += 1.6) {
     const z = -s;
     for (const side of [-1, 1]) {
-      if (random() > 0.55) continue;
+      if (random() > 0.85) continue;
       const hw = terrain.halfWidth(z);
       const d = hw + 9 + Math.pow(random(), 1.6) * 95;
       placements.push({
@@ -284,8 +284,9 @@ function buildObstacles(terrain, obstacles) {
   group.userData.swap = (byType) => {
     for (const mesh of group.children) {
       const o = mesh.userData.obstacle;
+      const otter = o.type === 'rock' && byType.otter;
       const model = o.type === 'rock'
-        ? (o.h < 0.55 ? byType['rock-flat'] : byType.boulder)
+        ? (otter || (o.h < 0.55 ? byType['rock-flat'] : byType.boulder))
         : byType[o.type];
       if (!model) continue;
       const ground = terrain.heightAt(o.x, o.z);
@@ -303,6 +304,11 @@ function buildObstacles(terrain, obstacles) {
           o.h / ext.y,
           longOnX ? width / ext.z : length / ext.z,
         );
+        mesh.position.set(o.x, ground, o.z);
+      } else if (otter) {
+        const ext = model.geometry.boundingBox.getSize(new THREE.Vector3());
+        mesh.scale.setScalar((Math.max(o.r, 0.4) * 2) / Math.max(ext.x, ext.z));
+        mesh.rotation.y = 0;
         mesh.position.set(o.x, ground, o.z);
       } else {
         const ext = model.geometry.boundingBox.getSize(new THREE.Vector3());
@@ -373,8 +379,22 @@ export function buildWorld(scene, renderer, terrain, obstacles) {
   envScene.add(envSky);
   scene.environment = pmrem.fromScene(envScene).texture;
   scene.environmentIntensity = 0.55;
+  const pineMaterials = [];
+  new THREE.TextureLoader().load('./assets/textures/sky.webp', (skyTexture) => {
+    skyTexture.mapping = THREE.EquirectangularReflectionMapping;
+    skyTexture.colorSpace = THREE.SRGBColorSpace;
+    scene.background = skyTexture;
+    scene.backgroundRotation.y = SKY_ROTATION;
+    scene.environmentRotation.y = SKY_ROTATION;
+    scene.environment = pmrem.fromEquirectangular(skyTexture).texture;
+    for (const material of pineMaterials) {
+      material.envMap = scene.environment;
+      material.needsUpdate = true;
+    }
+    scene.remove(sky);
+  });
 
-  scene.fog = new THREE.FogExp2(0xc9b9a6, 0.00042);
+  scene.fog = new THREE.FogExp2(0xb9c3cb, 0.0003);
 
   const hemi = new THREE.HemisphereLight(0xcfe3ff, 0x4a3b28, 0.35);
   scene.add(hemi);
@@ -387,8 +407,9 @@ export function buildWorld(scene, renderer, terrain, obstacles) {
   sun.shadow.normalBias = 0.04;
   scene.add(sun, sun.target);
 
-  scene.add(buildCourseMesh(terrain));
-  scene.add(buildRangeMesh(terrain));
+  const groundTextures = loadGroundTextures(renderer);
+  scene.add(buildCourseMesh(terrain, groundTextures));
+  scene.add(buildRangeMesh(terrain, groundTextures));
   const trees = buildTrees(terrain, obstacles);
   const obstacleGroup = buildObstacles(terrain, obstacles);
   scene.add(trees, obstacleGroup);
@@ -403,7 +424,8 @@ export function buildWorld(scene, renderer, terrain, obstacles) {
         const materials = Array.isArray(model.material) ? model.material : [model.material];
         for (const material of materials) {
           material.envMap = scene.environment;
-          material.envMapIntensity = 0.2;
+          pineMaterials.push(material);
+          material.envMapIntensity = 0.1;
           material.metalness = 0;
           material.roughness = 0.95;
           material.roughnessMap = null;
@@ -418,6 +440,7 @@ export function buildWorld(scene, renderer, terrain, obstacles) {
         'rock-flat': pick('rock-flat', 'xz'),
         stump: pick('stump', 'xz'),
         log: pick('log', 'xz'),
+        otter: pick('otter', 'y'),
       });
     },
     followSun(target) {

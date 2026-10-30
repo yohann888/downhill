@@ -21,12 +21,19 @@ while IFS= read -r -d '' model; do
     printf 'Skipping unrigged rider.glb; rider-rigged.glb will be published as rider.glb\n'
     continue
   fi
+  if [[ "$filename" == "rider-body.glb" && -f "$RAW_DIR/models/rider-body-rigged.glb" ]]; then
+    printf 'Skipping unrigged rider-body.glb; rider-body-rigged.glb will be published as rider-body.glb\n'
+    continue
+  fi
   name="$source_name"
   if [[ "$filename" == "rider-rigged.glb" ]]; then
     name="rider"
   fi
+  if [[ "$filename" == "rider-body-rigged.glb" ]]; then
+    name="rider-body"
+  fi
   texture_size=1024
-  if [[ "$name" =~ (pine|tree|rock|boulder|stump|log) ]]; then
+  if [[ "$name" =~ (pine|tree|rock|boulder|stump|log|otter) ]]; then
     texture_size=512
   fi
   output="$MODEL_DIR/$name.glb"

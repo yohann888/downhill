@@ -8,6 +8,7 @@ import { createRiderModel } from './render/rider.js';
 import { createDust } from './render/dust.js';
 import { createAudio } from './audio.js';
 import { loadModels } from './render/assets.js';
+import { createPost } from './render/post.js';
 
 const CRASH_PENALTY = 3;
 const RESPAWN_DELAY = 1.6;
@@ -27,6 +28,9 @@ const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerH
 const terrain = createTerrain();
 const obstacles = createObstacles(terrain);
 const world = buildWorld(scene, renderer, terrain, obstacles);
+const post = new URLSearchParams(window.location.search).has('nopost')
+  ? { render: () => renderer.render(scene, camera), setSize() {} }
+  : createPost(renderer, scene, camera);
 const model = createRiderModel();
 scene.add(model.root);
 const dust = createDust(scene);
@@ -300,7 +304,7 @@ function frame(now) {
   audio.update(game.bike, input, game.mode === 'riding', dt);
   updateCamera(dt);
   updateHud();
-  renderer.render(scene, camera);
+  post.render();
   requestAnimationFrame(frame);
 }
 
@@ -308,20 +312,56 @@ window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  post.setSize(window.innerWidth, window.innerHeight);
 });
 
 const p = startPose();
 placeBike(p.x, p.z, p.heading, 0);
 snapCamera();
 const debug = new URLSearchParams(window.location.search).has('debug');
-loadModels(['rider', 'boulder', 'rock-flat', 'stump', 'log', 'pine-a', 'pine-b']).then((models) => {
-  if (models.rider) model.setGlb(models.rider);
+const modelNames = ['rider-body', 'bike-frame', 'bike-wheel', 'boulder', 'rock-flat', 'stump', 'log', 'pine-a', 'pine-b', 'otter'];
+if (debug) {
+  game.assetsReady = false;
+  game.assetStatus = { state: 'loading', loaded: [], missing: [] };
+  window.__assetLoadErrors = {};
+  window.__riderModel = model;
+}
+loadModels(modelNames).then((models) => {
+  if (debug) window.__models = models;
+  const riderApplied = models['rider-body'] && models['bike-frame'] && models['bike-wheel']
+    ? model.setAssets({
+      riderBody: models['rider-body'],
+      bikeFrame: models['bike-frame'],
+      bikeWheel: models['bike-wheel'],
+    })
+    : false;
   world.applyModels(models);
+  if (debug) {
+    game.assetStatus = {
+      state: riderApplied ? 'ready' : 'fallback',
+      loaded: Object.keys(models),
+      missing: modelNames.filter((name) => !models[name]),
+      rider: model.getAssetStatus(),
+      loadErrors: { ...window.__assetLoadErrors },
+    };
+    game.assetsReady = Boolean(riderApplied);
+  }
+}).catch((error) => {
+  if (debug) {
+    game.assetStatus = { state: 'error', error: String(error), loadErrors: { ...window.__assetLoadErrors } };
+    game.assetsReady = false;
+  }
 });
 if (debug) {
   window.__game = game;
   window.__terrain = terrain;
   window.__camera = camera;
   window.__scene = scene;
+  window.__captureFrame = (position, target) => {
+    camera.position.fromArray(position);
+    camera.lookAt(new THREE.Vector3(...target));
+    post.render();
+    return renderer.domElement.toDataURL('image/png');
+  };
 }
 requestAnimationFrame((t) => { last = t; frame(t); });
