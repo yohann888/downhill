@@ -9,10 +9,11 @@ export function createAudio() {
   let voiceSource = null;
   const buffers = {};
   const loops = {};
-  let muted = localStorage.getItem('downhill-muted') === '1';
-  let volume = Number(localStorage.getItem('downhill-volume'));
-  if (!Number.isFinite(volume)) volume = 0.8;
-  volume = Math.min(1, Math.max(0, volume));
+  const storedMute = localStorage.getItem('downhill-muted');
+  let muted = storedMute === '1';
+  const storedVolume = localStorage.getItem('downhill-volume');
+  let volume = storedVolume === null || storedVolume.trim() === '' ? 0.8 : Number(storedVolume);
+  if (!Number.isFinite(volume) || volume < 0 || volume > 1) volume = 0.8;
   let skidCooldown = 0;
 
   async function load(name) {
