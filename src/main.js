@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { createBike, stepBike } from './physics/bike.js';
 import { DT } from './physics/constants.js';
 import { createObstacles } from './world/obstacles.js';
@@ -10,6 +11,8 @@ import { createAudio } from './audio.js';
 import { loadModels } from './render/assets.js';
 import { createPost } from './render/post.js';
 import { nextQualityLevel, slowMoTarget } from './feel.js';
+import { getCommentary, getLeaderboard, postRun } from './api.js';
+import { createRecorder, sampleGhost } from './ghost.js';
 
 const CRASH_PENALTY = 3;
 const RESPAWN_DELAY = 1.6;
@@ -41,6 +44,14 @@ const post = queryParams.has('nopost')
   : createPost(renderer, scene, camera);
 const model = createRiderModel();
 scene.add(model.root);
+const ghostModel = createRiderModel();
+ghostModel.root.visible = false;
+scene.add(ghostModel.root);
+const ghostRecorder = createRecorder();
+let bestGhost = null;
+let ghostAssetsReady = false;
+let leaderboardEntries = [];
+let commentaryTimeout;
 const dust = createDust(scene);
 const audio = createAudio();
 
@@ -53,6 +64,12 @@ const ui = {
   title: document.getElementById('overlay-title'),
   body: document.getElementById('overlay-body'),
   button: document.getElementById('overlay-button'),
+  startLeaderboard: document.getElementById('start-leaderboard'),
+  finishForm: document.getElementById('finish-controls'),
+  nameInput: document.getElementById('rider-name'),
+  finishLeaderboard: document.getElementById('finish-leaderboard'),
+  ghostStatus: document.getElementById('ghost-status'),
+  subtitle: document.getElementById('commentary-subtitle'),
   mute: document.getElementById('mute'),
   volume: document.getElementById('volume'),
 };
@@ -68,7 +85,10 @@ const KEYMAP = {
 };
 window.addEventListener('keydown', (e) => {
   if (KEYMAP[e.code]) { keys[KEYMAP[e.code]] = true; e.preventDefault(); }
-  if (e.code === 'Enter' && game.mode !== 'riding') start();
+  if (e.code === 'Enter' && game.mode === 'finished' && e.target !== ui.nameInput) {
+    e.preventDefault();
+    submitRun();
+  } else if (e.code === 'Enter' && game.mode !== 'riding' && game.mode !== 'finished') start();
   if (e.code === 'KeyR' && game.mode === 'riding') respawn(true);
   if (e.code === 'KeyM') ui.mute.click();
 });
@@ -83,6 +103,10 @@ for (const button of document.querySelectorAll('#touch button')) {
   button.addEventListener('pointerleave', set(false));
 }
 ui.button.addEventListener('click', () => start());
+ui.finishForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  submitRun();
+});
 
 const readInput = () => ({
   throttle: keys.throttle ? 1 : 0,
@@ -100,6 +124,9 @@ const game = {
   crashTimer: 0,
   maxSpeed: 0,
   airTime: 0,
+  maxAir: 0,
+  crashes: 0,
+  otterHits: 0,
   timeScale: 1,
   quality: initialQuality,
   qualityFps: null,
@@ -136,10 +163,17 @@ function start() {
   game.penalty = 0;
   game.checkpoint = -1;
   game.maxSpeed = 0;
+  game.maxAir = 0;
+  game.crashes = 0;
+  game.otterHits = 0;
+  ghostRecorder.reset();
   game.timeScale = 1;
   slowMoRealTime = 0;
   slowMoLocked = false;
   game.crashedSinceCheckpoint = false;
+  ui.finishForm.hidden = true;
+  ui.finishLeaderboard.replaceChildren();
+  ui.startLeaderboard.hidden = leaderboardEntries.length === 0;
   ui.overlay.classList.add('hidden');
   snapCamera();
 }
@@ -183,6 +217,72 @@ function showOverlay(title, body, button) {
   ui.overlay.classList.remove('hidden');
 }
 
+function renderLeaderboard(container, entries, playerRank = null) {
+  container.replaceChildren();
+  if (!entries?.length) return;
+  const table = document.createElement('table');
+  table.className = 'leaderboard';
+  const head = document.createElement('thead');
+  const header = document.createElement('tr');
+  for (const label of ['Rank', 'Name', 'Time']) {
+    const cell = document.createElement('th');
+    cell.textContent = label;
+    header.append(cell);
+  }
+  head.append(header);
+  const body = document.createElement('tbody');
+  entries.forEach((entry, index) => {
+    const row = document.createElement('tr');
+    if (index + 1 === playerRank) row.className = 'player-row';
+    for (const value of [String(index + 1), entry.name, `${Number(entry.time).toFixed(2)} s`]) {
+      const cell = document.createElement('td');
+      cell.textContent = value;
+      row.append(cell);
+    }
+    body.append(row);
+  });
+  table.append(head, body);
+  container.append(table);
+}
+
+function makeRunStats(name = 'Rider') {
+  const totalTime = game.time + game.penalty;
+  return {
+    name,
+    time: totalTime,
+    penalties: game.penalty,
+    topSpeed: game.maxSpeed * 3.6,
+    crashes: game.crashes,
+    otterHits: game.otterHits,
+    maxAir: game.maxAir,
+  };
+}
+
+async function submitRun() {
+  if (game.mode !== 'finished') return;
+  const name = ui.nameInput.value.trim() || 'Rider';
+  ui.nameInput.value = name;
+  localStorage.setItem('downhill-name', name);
+  const run = { ...makeRunStats(name), ghost: ghostRecorder.getGhost() };
+  const result = await postRun(run);
+  if (!result) {
+    ui.finishLeaderboard.textContent = 'Leaderboard unavailable';
+    return;
+  }
+  leaderboardEntries = result.top || [];
+  renderLeaderboard(ui.startLeaderboard, leaderboardEntries.slice(0, 3));
+  renderLeaderboard(ui.finishLeaderboard, result.top, result.rank);
+}
+
+function showCommentary(result) {
+  if (!result?.text) return;
+  ui.subtitle.textContent = result.text;
+  ui.subtitle.classList.add('show');
+  clearTimeout(commentaryTimeout);
+  commentaryTimeout = setTimeout(() => ui.subtitle.classList.remove('show'), 6000);
+  if (result.audio) void audio.playCommentary(result.audio);
+}
+
 function simulate(input) {
   const b = game.bike;
   game.prev = snapshot(b);
@@ -202,6 +302,7 @@ function simulate(input) {
     );
   }
   if (b.airborne) game.airTime += DT;
+  game.maxAir = Math.max(game.maxAir, game.airTime);
   if (!wasAir && b.airborne) {
     const kicker = terrain.kickers.find((item) => Math.abs(item.z - b.z) < 8);
     if (kicker) audio.event('kicker', b.v);
@@ -221,6 +322,8 @@ function simulate(input) {
     game.crashedSinceCheckpoint = false;
   }
   if (b.crashed) {
+    game.crashes += 1;
+    if (b.crashed === 'rock') game.otterHits += 1;
     game.mode = 'crashed';
     game.trauma = 1;
     game.crashHeading = b.heading;
@@ -246,6 +349,11 @@ function simulate(input) {
       `${total.toFixed(2)} s  (penalties ${game.penalty} s)  top ${Math.round(game.maxSpeed * 3.6)} km/h  best ${game.best.toFixed(2)} s`,
       'Ride again',
     );
+    ui.finishForm.hidden = false;
+    ui.startLeaderboard.hidden = true;
+    ui.nameInput.value = localStorage.getItem('downhill-name') || 'Rider';
+    ui.finishLeaderboard.replaceChildren();
+    getCommentary({ ...makeRunStats(ui.nameInput.value.trim() || 'Rider'), rank: null }).then(showCommentary);
   }
 }
 
@@ -321,6 +429,27 @@ function gradeAt(b) {
   return (terrain.heightAt(b.x + dx, b.z + dz) - terrain.heightAt(b.x - dx, b.z - dz)) / 1.2;
 }
 
+function tintGhost() {
+  ghostModel.root.traverse((object) => {
+    if (object.isMesh) {
+      const makeMaterial = (material) => {
+        const ghostMaterial = material.clone();
+        ghostMaterial.transparent = true;
+        ghostMaterial.opacity = 0.35;
+        ghostMaterial.depthWrite = false;
+        ghostMaterial.emissive?.set(0x005160);
+        if ('emissiveIntensity' in ghostMaterial) ghostMaterial.emissiveIntensity = 0.18;
+        return ghostMaterial;
+      };
+      object.material = Array.isArray(object.material)
+        ? object.material.map(makeMaterial)
+        : makeMaterial(object.material);
+      object.castShadow = false;
+      object.receiveShadow = false;
+    }
+  });
+}
+
 function updateHud() {
   const b = game.bike;
   ui.speed.textContent = String(Math.round(b.v * 3.6));
@@ -393,6 +522,7 @@ function frame(now) {
   let steps = 0;
   while (accumulator >= DT && steps < 12) {
     simulate(input);
+    ghostRecorder.sample(game.time, game.bike);
     accumulator -= DT;
     steps += 1;
   }
@@ -406,6 +536,30 @@ function frame(now) {
     dt,
     terrain.heightAt,
   );
+  const ghostFrame = ghostAssetsReady ? sampleGhost(bestGhost, game.time) : null;
+  if (ghostFrame) {
+    const nextFrame = sampleGhost(bestGhost, game.time + bestGhost.dt);
+    const ghostSpeed = nextFrame
+      ? Math.hypot(nextFrame.x - ghostFrame.x, nextFrame.z - ghostFrame.z) / bestGhost.dt
+      : 0;
+    ghostModel.root.visible = true;
+    ghostModel.root.position.set(ghostFrame.x, ghostFrame.y, ghostFrame.z);
+    ghostModel.update(
+      {
+        ...ghostFrame,
+        v: ghostSpeed,
+        vy: 0,
+        airborne: false,
+        steer: 0,
+      },
+      {},
+      gradeAt(ghostFrame),
+      dt,
+      terrain.heightAt,
+    );
+  } else {
+    ghostModel.root.visible = false;
+  }
   world.followSun(model.root.position);
   dust.update(game.bike, game.mode === 'riding', dt);
   audio.update(game.bike, input, game.mode === 'riding', dt, game.timeScale);
@@ -441,6 +595,22 @@ loadModels(modelNames).then((models) => {
       bikeWheel: models['bike-wheel'],
     })
     : false;
+  ghostAssetsReady = Boolean(riderApplied && ghostModel.setAssets({
+    riderBody: {
+      ...models['rider-body'],
+      scene: cloneSkeleton(models['rider-body'].scene),
+    },
+    bikeFrame: {
+      ...models['bike-frame'],
+      scene: models['bike-frame'].scene.clone(true),
+    },
+    bikeWheel: {
+      ...models['bike-wheel'],
+      scene: models['bike-wheel'].scene.clone(true),
+    },
+  }));
+  if (ghostAssetsReady) tintGhost();
+  game.ghostAssetsReady = ghostAssetsReady;
   world.applyModels(models);
   assetsReady = Boolean(riderApplied);
   game.assetsReady = assetsReady;
@@ -461,6 +631,16 @@ loadModels(modelNames).then((models) => {
   if (debug) {
     game.assetStatus = { state: 'error', error: String(error), loadErrors: { ...window.__assetLoadErrors } };
   }
+});
+getLeaderboard().then((result) => {
+  if (!result) return;
+  leaderboardEntries = result.top || [];
+  bestGhost = result.ghost || null;
+  ui.ghostStatus.textContent = bestGhost
+    ? `Ghost: ${bestGhost.name} ${Number(bestGhost.time).toFixed(2)} s`
+    : '';
+  renderLeaderboard(ui.startLeaderboard, leaderboardEntries.slice(0, 3));
+  ui.startLeaderboard.hidden = leaderboardEntries.length === 0;
 });
 if (debug) {
   window.__game = game;

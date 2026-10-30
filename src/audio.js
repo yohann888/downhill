@@ -76,6 +76,37 @@ export function createAudio() {
     source.start();
   }
 
+  async function playCommentary(base64) {
+    if (!ctx || !master || !base64) return false;
+    let source = null;
+    const restoreMusic = () => {
+      if (musicGain) musicGain.gain.setTargetAtTime(0.25, ctx.currentTime, 0.08);
+    };
+    try {
+      const bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
+      const buffer = await ctx.decodeAudioData(bytes.buffer);
+      if (voiceSource) {
+        try { voiceSource.stop(); } catch { /* already ended */ }
+      }
+      source = ctx.createBufferSource();
+      source.buffer = buffer;
+      voiceSource = source;
+      source.connect(master);
+      if (musicGain) musicGain.gain.setTargetAtTime(0.1, ctx.currentTime, 0.08);
+      source.addEventListener('ended', () => {
+        if (voiceSource === source) {
+          voiceSource = null;
+          restoreMusic();
+        }
+      }, { once: true });
+      source.start();
+      return true;
+    } catch {
+      restoreMusic();
+      return false;
+    }
+  }
+
   return {
     get muted() { return muted; },
     get volume() { return volume; },
@@ -110,6 +141,7 @@ export function createAudio() {
       if (master) master.gain.setTargetAtTime(muted ? 0 : volume, ctx.currentTime, 0.05);
       return volume;
     },
+    playCommentary,
     update(bike, input, riding, dt, timeScale = 1) {
       if (!ctx) return;
       const v = riding ? bike.v : 0;
