@@ -281,22 +281,29 @@ export function createRiderModel() {
     assetHolder.position.set(0, 0, 0);
     assetHolder.rotation.set(0, 0, 0);
 
-    bikeAsset = new THREE.Group();
     const bikeScene = bikeFrame.scene;
-    bikeAsset.add(bikeScene);
-    assetHolder.add(bikeAsset);
-
-    riderRoot = new THREE.Group();
-    riderScene = riderBody.scene;
-    riderRoot.add(riderScene);
-    assetHolder.add(riderRoot);
-
     const bikeBox = new THREE.Box3().setFromObject(bikeScene);
     const bikeSize = bikeBox.getSize(new THREE.Vector3());
     const bikeCenter = bikeBox.getCenter(new THREE.Vector3());
     if (bikeSize.x < 1e-4 || bikeSize.y < 1e-4 || bikeSize.z < 1e-4) {
       return failAssetSetup(`Bike bounds are invalid: ${bikeSize.toArray().join(', ')}`);
     }
+
+    const riderScene = riderBody.scene;
+    const riderBox = new THREE.Box3().setFromObject(riderScene);
+    const riderSize = riderBox.getSize(new THREE.Vector3());
+    if (riderSize.y < 1e-4) {
+      return failAssetSetup(`Rider height is invalid: ${riderSize.y}`);
+    }
+
+    bikeAsset = new THREE.Group();
+    bikeAsset.add(bikeScene);
+    assetHolder.add(bikeAsset);
+
+    riderRoot = new THREE.Group();
+    riderRoot.add(riderScene);
+    assetHolder.add(riderRoot);
+
     const bikeScale = (2 * HALF_BASE) / bikeSize.z;
     bikeAsset.scale.setScalar(bikeScale);
     bikeAsset.rotation.y = Math.PI;
@@ -325,11 +332,6 @@ export function createRiderModel() {
       return pivot;
     };
 
-    const riderBox = new THREE.Box3().setFromObject(riderScene);
-    const riderSize = riderBox.getSize(new THREE.Vector3());
-    if (riderSize.y < 1e-4) {
-      return failAssetSetup(`Rider height is invalid: ${riderSize.y}`);
-    }
     riderRoot.scale.setScalar(1.7 / riderSize.y);
     riderRoot.rotation.y = Math.PI;
     riderBaseY = WHEEL_R - riderBox.min.y * riderRoot.scale.y;
