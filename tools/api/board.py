@@ -106,6 +106,11 @@ def insert_top(
     *,
     timestamp: float,
 ) -> tuple[list[dict[str, Any]], int | None]:
+    entries = [dict(item) for item in existing]
+    duplicate_rank = find_duplicate_rank(entries, run)
+    if duplicate_rank is not None:
+        return entries, duplicate_rank
+
     entry = {
         "name": run["name"],
         "time": float(run["time"]),
@@ -113,12 +118,24 @@ def insert_top(
         "topSpeed": float(run["topSpeed"]),
         "ts": float(timestamp),
     }
-    entries = [dict(item) for item in existing]
     entries.append(entry)
     entries.sort(key=lambda item: (float(item["time"]), float(item.get("ts", 0))))
     top = entries[:TOP_SIZE]
     rank = next((index + 1 for index, item in enumerate(top) if item is entry), None)
     return top, rank
+
+
+def find_duplicate_rank(
+    existing: Sequence[Mapping[str, Any]],
+    run: Mapping[str, Any],
+) -> int | None:
+    for index, item in enumerate(existing):
+        if (
+            item.get("name") == run["name"]
+            and abs(float(item["time"]) - float(run["time"])) < 1e-6
+        ):
+            return index + 1
+    return None
 
 
 def consume_rate_limit(store: Any, ip: str, now: float) -> bool:

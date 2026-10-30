@@ -8,8 +8,9 @@ import {
   WHEELBASE,
 } from '../src/physics/constants.js';
 import { createBike, stepBike } from '../src/physics/bike.js';
-import { createObstacles } from '../src/world/obstacles.js';
+import { createObstacles, updateMovingObstacles } from '../src/world/obstacles.js';
 import { createTerrain } from '../src/world/terrain.js';
+import { createPlaneTerrain } from './helpers.js';
 
 function scriptedRun(seed) {
   const terrain = createTerrain(seed);
@@ -23,6 +24,7 @@ function scriptedRun(seed) {
       brake: time > 11 && time < 13 ? 1 : 0,
       steer: Math.sin(time * 0.7) * 0.2,
     };
+    updateMovingObstacles(obstacles, time);
     stepBike(bike, input, terrain, obstacles, DT);
   }
   return bike;
@@ -113,7 +115,7 @@ describe('terrain and obstacle generation', () => {
         ),
       ).toBe(false);
       expect(obstacleClearanceFromEdge(obstacle, terrain)).toBeGreaterThanOrEqual(
-        1.6 - 1e-9,
+        (obstacle.type === 'rock' ? 0.3 : 1.6) - 1e-9,
       );
       if (obstacle.type === 'rock') {
         const width = terrain.halfWidth(obstacle.z);
@@ -148,6 +150,43 @@ describe('terrain and obstacle generation', () => {
     }
   });
 
+  it('keeps moving rocks within trail bounds and collides at their updated positions', () => {
+    const terrain = createTerrain(5);
+    const obstacles = createObstacles(terrain, 25);
+    const rocks = obstacles.filter((obstacle) => obstacle.type === 'rock');
+
+    for (let step = 0; step <= 400; step += 1) {
+      updateMovingObstacles(obstacles, step * 0.17);
+      for (const rock of rocks) {
+        const center = terrain.centerX(rock.z);
+        const halfWidth = terrain.halfWidth(rock.z);
+        expect(rock.x).toBeGreaterThanOrEqual(center - halfWidth + rock.r - 1e-9);
+        expect(rock.x).toBeLessThanOrEqual(center + halfWidth - rock.r + 1e-9);
+      }
+    }
+
+    const movingRock = {
+      type: 'rock',
+      x: 0,
+      z: -1,
+      r: 0.75,
+      h: 0.8,
+      baseX: 0,
+      walk: { amp: 1, speed: 1, phase: 0 },
+    };
+    updateMovingObstacles([movingRock], Math.PI / 2);
+    expect(movingRock.x).not.toBe(movingRock.baseX);
+
+    const flatTerrain = createPlaneTerrain();
+    const bike = createBike({ x: movingRock.x, z: 0 }, flatTerrain);
+    bike.v = 8;
+    for (let step = 0; step < 20 && !bike.crashed; step += 1) {
+      stepBike(bike, { throttle: 0, brake: 0, steer: 0 }, flatTerrain, [movingRock], DT);
+    }
+
+    expect(bike.crashed).toBe('rock');
+  });
+
   it('lets the center-seeking autopilot reach the finish without crashing', () => {
     const terrain = createTerrain();
     const obstacles = createObstacles(terrain);
@@ -156,28 +195,38 @@ describe('terrain and obstacle generation', () => {
     let finishTime = null;
 
     for (let step = 0; step < 240 / DT; step += 1) {
+      const time = step * DT;
+      updateMovingObstacles(obstacles, time);
       const lookAhead = 8;
       let targetX = terrain.centerX(bike.z - lookAhead);
       let targetZ = bike.z - lookAhead;
       const brake = bike.v > 10 ? 1 : 0;
       let nearestObstacle = null;
+      let nearestObstacleX = 0;
       let nearestDistance = Infinity;
 
       for (const obstacle of obstacles) {
         if (obstacle.type === 'tree') continue;
         const distanceAhead = bike.z - obstacle.z;
         if (distanceAhead < 0 || distanceAhead > 25) continue;
-        const lateralDistance = Math.abs(obstacle.x - bike.x);
+        const arrivalTime = time + distanceAhead / Math.max(bike.v, 1);
+        const obstacleX = obstacle.walk
+          ? obstacle.baseX
+            + obstacle.walk.amp
+              * Math.sin(arrivalTime * obstacle.walk.speed + obstacle.walk.phase)
+          : obstacle.x;
+        const lateralDistance = Math.abs(obstacleX - bike.x);
         const distance = Math.hypot(distanceAhead, lateralDistance);
         if (distance < nearestDistance) {
           nearestDistance = distance;
           nearestObstacle = obstacle;
+          nearestObstacleX = obstacleX;
         }
       }
 
       if (nearestObstacle) {
         const direction =
-          nearestObstacle.x >= terrain.centerX(nearestObstacle.z) ? -1 : 1;
+          nearestObstacleX >= terrain.centerX(nearestObstacle.z) ? -1 : 1;
         targetX =
           terrain.centerX(nearestObstacle.z) +
           direction * (terrain.halfWidth(nearestObstacle.z) - 0.55);

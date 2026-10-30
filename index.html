@@ -12,7 +12,14 @@
     <div id="hud">
       <div class="hud-top">
         <div class="stat"><span id="speed">0</span><small>km/h</small></div>
-        <div class="progress"><div id="progress-fill"></div></div>
+        <div class="progress-wrap">
+          <div class="progress">
+            <div id="progress-fill"></div>
+            <div id="checkpoint-marks"></div>
+            <div id="ghost-progress" hidden></div>
+          </div>
+          <span id="progress-percent">0%</span>
+        </div>
         <div class="timer-stat">
           <div class="stat"><span id="timer">0.00</span><small>s</small></div>
           <div id="ghost-status"></div>

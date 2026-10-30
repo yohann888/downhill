@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { createBike, stepBike } from './physics/bike.js';
 import { DT } from './physics/constants.js';
-import { createObstacles } from './world/obstacles.js';
+import { createObstacles, updateMovingObstacles } from './world/obstacles.js';
 import { createTerrain } from './world/terrain.js';
 import { buildWorld } from './render/world.js';
 import { createRiderModel } from './render/rider.js';
@@ -59,6 +59,9 @@ const ui = {
   speed: document.getElementById('speed'),
   timer: document.getElementById('timer'),
   progress: document.getElementById('progress-fill'),
+  progressPercent: document.getElementById('progress-percent'),
+  checkpointMarks: document.getElementById('checkpoint-marks'),
+  ghostProgress: document.getElementById('ghost-progress'),
   flash: document.getElementById('flash'),
   overlay: document.getElementById('overlay'),
   title: document.getElementById('overlay-title'),
@@ -67,6 +70,7 @@ const ui = {
   startLeaderboard: document.getElementById('start-leaderboard'),
   finishForm: document.getElementById('finish-controls'),
   nameInput: document.getElementById('rider-name'),
+  submitButton: document.querySelector('#finish-controls button[type="submit"]'),
   finishLeaderboard: document.getElementById('finish-leaderboard'),
   ghostStatus: document.getElementById('ghost-status'),
   subtitle: document.getElementById('commentary-subtitle'),
@@ -74,6 +78,13 @@ const ui = {
   volume: document.getElementById('volume'),
 };
 ui.mute.textContent = audio.muted ? 'Sound off' : 'Sound on';
+for (const checkpoint of terrain.checkpoints) {
+  const mark = document.createElement('span');
+  const progress = Math.max(0, Math.min(1, -checkpoint.z / terrain.courseLength));
+  mark.className = 'checkpoint-mark';
+  mark.style.left = `${progress * 100}%`;
+  ui.checkpointMarks.append(mark);
+}
 ui.mute.addEventListener('click', () => { ui.mute.textContent = audio.toggleMute() ? 'Sound off' : 'Sound on'; ui.mute.blur(); });
 ui.volume.value = String(audio.volume);
 ui.volume.addEventListener('input', () => audio.setVolume(Number(ui.volume.value)));
@@ -132,6 +143,9 @@ const game = {
   qualityFps: null,
   assetsReady: false,
   crashedSinceCheckpoint: false,
+  runId: 0,
+  runSubmitted: false,
+  runSubmitting: false,
   trauma: 0,
   best: Number(localStorage.getItem('downhill-best')) || null,
 };
@@ -160,18 +174,26 @@ function start() {
   placeBike(p.x, p.z, p.heading, 0);
   game.mode = 'riding';
   game.time = 0;
+  updateMovingObstacles(obstacles, 0);
+  world.update(0);
   game.penalty = 0;
   game.checkpoint = -1;
   game.maxSpeed = 0;
   game.maxAir = 0;
   game.crashes = 0;
   game.otterHits = 0;
+  game.runId += 1;
+  game.runSubmitted = false;
+  game.runSubmitting = false;
   ghostRecorder.reset();
   game.timeScale = 1;
   slowMoRealTime = 0;
   slowMoLocked = false;
   game.crashedSinceCheckpoint = false;
   ui.finishForm.hidden = true;
+  ui.nameInput.disabled = false;
+  ui.submitButton.disabled = false;
+  ui.submitButton.textContent = 'Submit';
   ui.finishLeaderboard.replaceChildren();
   ui.startLeaderboard.hidden = leaderboardEntries.length === 0;
   ui.overlay.classList.add('hidden');
@@ -259,19 +281,38 @@ function makeRunStats(name = 'Rider') {
 }
 
 async function submitRun() {
-  if (game.mode !== 'finished') return;
-  const name = ui.nameInput.value.trim() || 'Rider';
-  ui.nameInput.value = name;
-  localStorage.setItem('downhill-name', name);
-  const run = { ...makeRunStats(name), ghost: ghostRecorder.getGhost() };
-  const result = await postRun(run);
-  if (!result) {
-    ui.finishLeaderboard.textContent = 'Leaderboard unavailable';
-    return;
+  if (game.mode !== 'finished' || game.runSubmitted || game.runSubmitting) return;
+  const runId = game.runId;
+  game.runSubmitting = true;
+  ui.nameInput.disabled = true;
+  ui.submitButton.disabled = true;
+  try {
+    const name = ui.nameInput.value.trim() || 'Rider';
+    ui.nameInput.value = name;
+    localStorage.setItem('downhill-name', name);
+    const run = { ...makeRunStats(name), ghost: ghostRecorder.getGhost() };
+    const result = await postRun(run);
+    if (runId !== game.runId) return;
+    if (!result) {
+      ui.finishLeaderboard.textContent = 'Leaderboard unavailable';
+      return;
+    }
+    game.runSubmitted = true;
+    ui.submitButton.textContent = 'Submitted';
+    leaderboardEntries = result.top || [];
+    renderLeaderboard(ui.startLeaderboard, leaderboardEntries.slice(0, 3));
+    renderLeaderboard(ui.finishLeaderboard, result.top, result.rank);
+  } catch {
+    if (runId === game.runId) ui.finishLeaderboard.textContent = 'Leaderboard unavailable';
+  } finally {
+    if (runId === game.runId) {
+      game.runSubmitting = false;
+      if (!game.runSubmitted) {
+        ui.nameInput.disabled = false;
+        ui.submitButton.disabled = false;
+      }
+    }
   }
-  leaderboardEntries = result.top || [];
-  renderLeaderboard(ui.startLeaderboard, leaderboardEntries.slice(0, 3));
-  renderLeaderboard(ui.finishLeaderboard, result.top, result.rank);
 }
 
 function showCommentary(result) {
@@ -293,6 +334,7 @@ function simulate(input) {
   }
   if (game.mode !== 'riding') return;
   const wasAir = b.airborne;
+  updateMovingObstacles(obstacles, game.time);
   stepBike(b, input, terrain, obstacles, DT);
   game.time += DT;
   if (b.landingImpact > 0) {
@@ -454,7 +496,17 @@ function updateHud() {
   const b = game.bike;
   ui.speed.textContent = String(Math.round(b.v * 3.6));
   ui.timer.textContent = (game.time + game.penalty).toFixed(2);
-  ui.progress.style.width = `${Math.min(100, Math.max(0, (-b.z / terrain.courseLength) * 100))}%`;
+  const progress = Math.max(0, Math.min(1, -b.z / terrain.courseLength));
+  ui.progress.style.width = `${progress * 100}%`;
+  ui.progressPercent.textContent = `${Math.round(progress * 100)}%`;
+  const ghostFrame = game.mode === 'riding' || game.mode === 'crashed'
+    ? sampleGhost(bestGhost, game.time)
+    : null;
+  ui.ghostProgress.hidden = !ghostFrame;
+  if (ghostFrame) {
+    const ghostProgress = Math.max(0, Math.min(1, -ghostFrame.z / terrain.courseLength));
+    ui.ghostProgress.style.left = `${ghostProgress * 100}%`;
+  }
 }
 
 let accumulator = 0;
@@ -561,6 +613,7 @@ function frame(now) {
     ghostModel.root.visible = false;
   }
   world.followSun(model.root.position);
+  world.update(game.time);
   dust.update(game.bike, game.mode === 'riding', dt);
   audio.update(game.bike, input, game.mode === 'riding', dt, game.timeScale);
   updateCamera(dt);

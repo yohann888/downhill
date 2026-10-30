@@ -13,7 +13,7 @@ import modal
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from board import consume_rate_limit, insert_top, validate_run
+from board import consume_rate_limit, find_duplicate_rank, insert_top, validate_run
 
 
 COMMENTATOR_PROMPT = """You are Otto, a sarcastic but loving otter who sits in the middle of a downhill mountain bike trail with a laptop and does live race commentary.
@@ -87,9 +87,12 @@ async def post_run(request: Request) -> dict[str, Any]:
     if not consume_rate_limit(board, ip, time.time()):
         raise HTTPException(status_code=429, detail="Run limit reached")
 
-    updated, rank = insert_top(_top_entries(), run, timestamp=time.time())
-    board.put(TOP_KEY, updated)
-    if rank == 1:
+    existing = _top_entries()
+    duplicate = find_duplicate_rank(existing, run) is not None
+    updated, rank = insert_top(existing, run, timestamp=time.time())
+    if not duplicate:
+        board.put(TOP_KEY, updated)
+    if rank == 1 and not duplicate:
         board.put(BEST_GHOST_KEY, {
             "name": run["name"],
             "time": run["time"],

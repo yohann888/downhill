@@ -253,6 +253,7 @@ function buildTrees(terrain, obstacles) {
 
 function buildObstacles(terrain, obstacles) {
   const group = new THREE.Group();
+  const movingMeshes = [];
   const rockMaterial = new THREE.MeshStandardMaterial({ color: 0x86827a, roughness: 0.9, flatShading: true });
   const woodMaterial = new THREE.MeshStandardMaterial({ color: 0x6a4a2e, roughness: 0.9 });
   const cutMaterial = new THREE.MeshStandardMaterial({ color: 0xc19a6b, roughness: 0.9 });
@@ -264,7 +265,9 @@ function buildObstacles(terrain, obstacles) {
       mesh = new THREE.Mesh(rockGeometry, rockMaterial);
       mesh.scale.set(o.r * 1.05, o.h * 0.75, o.r * 0.95);
       mesh.position.set(o.x, terrain.heightAt(o.x, o.z) + o.h * 0.25, o.z);
-      mesh.rotation.y = o.rot;
+      mesh.rotation.y = o.walk && o.dir < 0 ? -Math.PI / 2 : Math.PI / 2;
+      mesh.userData.yOffset = o.h * 0.25;
+      if (o.walk) movingMeshes.push(mesh);
     } else if (o.type === 'stump') {
       mesh = new THREE.Mesh(new THREE.CylinderGeometry(o.r, o.r * 1.2, o.h, 10), [woodMaterial, cutMaterial, woodMaterial]);
       mesh.position.set(o.x, terrain.heightAt(o.x, o.z) + o.h / 2, o.z);
@@ -293,6 +296,10 @@ function buildObstacles(terrain, obstacles) {
       mesh.geometry = model.geometry;
       mesh.material = model.material;
       mesh.rotation.set(0, o.rot, 0);
+      if (o.type === 'rock') {
+        mesh.userData.yOffset = 0;
+        mesh.rotation.y = o.dir < 0 ? -Math.PI / 2 : Math.PI / 2;
+      }
       if (o.type === 'log') {
         const length = Math.hypot(o.x2 - o.x1, o.z2 - o.z1) + 0.3;
         const ext = model.geometry.boundingBox.getSize(new THREE.Vector3());
@@ -308,13 +315,36 @@ function buildObstacles(terrain, obstacles) {
       } else if (otter) {
         const ext = model.geometry.boundingBox.getSize(new THREE.Vector3());
         mesh.scale.setScalar((Math.max(o.r, 0.4) * 2) / Math.max(ext.x, ext.z));
-        mesh.rotation.y = 0;
         mesh.position.set(o.x, ground, o.z);
       } else {
         const ext = model.geometry.boundingBox.getSize(new THREE.Vector3());
         mesh.scale.set((o.r * 2) / ext.x, o.h / ext.y, (o.r * 2) / ext.z);
         mesh.position.set(o.x, ground, o.z);
       }
+    }
+  };
+  let lastTime = 0;
+  group.userData.update = (time) => {
+    const deltaTime = Math.max(0, Math.min(0.1, time - lastTime));
+    const turnAlpha = 1 - Math.exp(-10 * deltaTime);
+    lastTime = time;
+    for (const mesh of movingMeshes) {
+      const o = mesh.userData.obstacle;
+      const targetYaw = o.dir < 0 ? -Math.PI / 2 : Math.PI / 2;
+      const yawDelta = Math.atan2(
+        Math.sin(targetYaw - mesh.rotation.y),
+        Math.cos(targetYaw - mesh.rotation.y),
+      );
+      mesh.rotation.y += yawDelta * turnAlpha;
+      const waddlePhase = time * Math.PI * 8 + o.walk.phase;
+      mesh.rotation.z = Math.sin(waddlePhase) * 0.12;
+      mesh.position.set(
+        o.x,
+        terrain.heightAt(o.x, o.z)
+          + mesh.userData.yOffset
+          + Math.sin(waddlePhase) * 0.04,
+        o.z,
+      );
     }
   };
   return group;
@@ -446,6 +476,9 @@ export function buildWorld(scene, renderer, terrain, obstacles) {
     followSun(target) {
       sun.target.position.copy(target);
       sun.position.copy(target).addScaledVector(SUN_DIRECTION, 200);
+    },
+    update(time) {
+      obstacleGroup.userData.update(time);
     },
   };
 }

@@ -76,6 +76,38 @@ def test_insert_top_sorts_by_time_caps_at_fifty_and_returns_rank():
     assert all(item["name"] != "Slow" for item in top)
 
 
+def test_insert_top_returns_existing_rank_for_duplicate_name_and_time():
+    existing = [
+        {"name": "Rider", "time": 29.5, "penalties": 0, "topSpeed": 40, "ts": 1},
+        {"name": "Rider", "time": 30.0, "penalties": 2, "topSpeed": 42, "ts": 2},
+    ]
+
+    top, rank = insert_top(
+        existing,
+        {"name": "Rider", "time": 30.0 + 0.5e-6, "penalties": 3, "topSpeed": 50},
+        timestamp=100,
+    )
+
+    assert top == existing
+    assert rank == 2
+
+
+def test_insert_top_keeps_same_name_with_different_time():
+    existing = [
+        {"name": "Rider", "time": 30.0, "penalties": 0, "topSpeed": 40, "ts": 1},
+    ]
+
+    top, rank = insert_top(
+        existing,
+        {"name": "Rider", "time": 31.0, "penalties": 0, "topSpeed": 42},
+        timestamp=2,
+    )
+
+    assert len(top) == 2
+    assert rank == 2
+    assert top[1]["time"] == 31.0
+
+
 def test_rate_limit_allows_thirty_runs_per_ip_per_hour():
     store = {}
     for _ in range(30):
