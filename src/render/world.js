@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Sky } from 'three/examples/jsm/objects/Sky.js';
 import { createRandom, createValueNoise } from '../world/noise.js';
 import { crossProfile } from '../world/terrain.js';
+import { unitMesh } from './assets.js';
 
 const smoothstep = (a, b, v) => {
   const t = Math.min(1, Math.max(0, (v - a) / (b - a)));
@@ -212,7 +213,7 @@ function buildTrees(terrain, obstacles) {
   const position = new THREE.Vector3();
   const color = new THREE.Color();
   placements.forEach((tree, i) => {
-    position.set(tree.x, terrain.heightAt(tree.x, tree.z) - 0.1, tree.z);
+    position.set(tree.x, terrain.heightAt(tree.x, tree.z), tree.z);
     quat.setFromAxisAngle(new THREE.Vector3(0, 1, 0), random() * Math.PI * 2);
     scale.setScalar(tree.scale);
     matrix.compose(position, quat, scale);
@@ -226,6 +227,27 @@ function buildTrees(terrain, obstacles) {
   foliage.receiveShadow = true;
   const group = new THREE.Group();
   group.add(trunks, foliage);
+  const yaw = placements.map(() => random() * Math.PI * 2);
+  group.userData.swap = (variants) => {
+    const usable = variants.filter(Boolean);
+    if (!usable.length) return;
+    trunks.visible = false;
+    foliage.visible = false;
+    usable.forEach((variant, v) => {
+      const mine = placements.filter((_, i) => i % usable.length === v);
+      const mesh = new THREE.InstancedMesh(variant.geometry, variant.material, mine.length);
+      mine.forEach((tree, i) => {
+        position.set(tree.x, terrain.heightAt(tree.x, tree.z), tree.z);
+        quat.setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw[i]);
+        scale.setScalar(10);
+        matrix.compose(position, quat, scale);
+        mesh.setMatrixAt(i, matrix);
+      });
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      group.add(mesh);
+    });
+  };
   return group;
 }
 
@@ -256,8 +278,39 @@ function buildObstacles(terrain, obstacles) {
     }
     mesh.castShadow = true;
     mesh.receiveShadow = true;
+    mesh.userData.obstacle = o;
     group.add(mesh);
   }
+  group.userData.swap = (byType) => {
+    for (const mesh of group.children) {
+      const o = mesh.userData.obstacle;
+      const model = o.type === 'rock'
+        ? (o.h < 0.55 ? byType['rock-flat'] : byType.boulder)
+        : byType[o.type];
+      if (!model) continue;
+      const ground = terrain.heightAt(o.x, o.z);
+      mesh.geometry = model.geometry;
+      mesh.material = model.material;
+      mesh.rotation.set(0, o.rot, 0);
+      if (o.type === 'log') {
+        const length = Math.hypot(o.x2 - o.x1, o.z2 - o.z1) + 0.3;
+        const ext = model.geometry.boundingBox.getSize(new THREE.Vector3());
+        const longOnX = ext.x >= ext.z;
+        const width = o.r * 2;
+        mesh.rotation.y = -Math.atan2(o.z2 - o.z1, o.x2 - o.x1) + (longOnX ? 0 : Math.PI / 2);
+        mesh.scale.set(
+          longOnX ? length / ext.x : width / ext.x,
+          o.h / ext.y,
+          longOnX ? width / ext.z : length / ext.z,
+        );
+        mesh.position.set(o.x, ground, o.z);
+      } else {
+        const ext = model.geometry.boundingBox.getSize(new THREE.Vector3());
+        mesh.scale.set((o.r * 2) / ext.x, o.h / ext.y, (o.r * 2) / ext.z);
+        mesh.position.set(o.x, ground, o.z);
+      }
+    }
+  };
   return group;
 }
 
@@ -336,11 +389,37 @@ export function buildWorld(scene, renderer, terrain, obstacles) {
 
   scene.add(buildCourseMesh(terrain));
   scene.add(buildRangeMesh(terrain));
-  scene.add(buildTrees(terrain, obstacles));
-  scene.add(buildObstacles(terrain, obstacles));
+  const trees = buildTrees(terrain, obstacles);
+  const obstacleGroup = buildObstacles(terrain, obstacles);
+  scene.add(trees, obstacleGroup);
   scene.add(buildMarkers(terrain));
 
   return {
+    applyModels(models) {
+      const pick = (name, axis) => (models[name] ? unitMesh(models[name], axis) : null);
+      const pine = (name) => {
+        const model = pick(name, 'y');
+        if (!model) return null;
+        const materials = Array.isArray(model.material) ? model.material : [model.material];
+        for (const material of materials) {
+          material.envMap = scene.environment;
+          material.envMapIntensity = 0.2;
+          material.metalness = 0;
+          material.roughness = 0.95;
+          material.roughnessMap = null;
+          material.needsUpdate = true;
+        }
+        return model;
+      };
+      trees.userData.swap([pine('pine-a'), pine('pine-b')]);
+      const rock = pick('boulder', 'xz');
+      obstacleGroup.userData.swap({
+        boulder: rock,
+        'rock-flat': pick('rock-flat', 'xz'),
+        stump: pick('stump', 'xz'),
+        log: pick('log', 'xz'),
+      });
+    },
     followSun(target) {
       sun.target.position.copy(target);
       sun.position.copy(target).addScaledVector(SUN_DIRECTION, 200);
