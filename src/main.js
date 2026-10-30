@@ -314,8 +314,11 @@ const p = startPose();
 placeBike(p.x, p.z, p.heading, 0);
 snapCamera();
 const debug = new URLSearchParams(window.location.search).has('debug');
-loadModels(['rider', 'boulder', 'rock-flat', 'stump', 'log', 'pine-a', 'pine-b']).then((models) => {
-  if (models.rider) model.setGlb(models.rider);
+loadModels(['rider-body', 'bike-body', 'boulder', 'rock-flat', 'stump', 'log', 'pine-a', 'pine-b', 'otter']).then((models) => {
+  if (debug) window.__models = models;
+  if (models['rider-body'] && models['bike-body']) {
+    model.setAssets({ riderBody: models['rider-body'], bikeBody: models['bike-body'] });
+  }
   world.applyModels(models);
 });
 if (debug) {
@@ -323,5 +326,11 @@ if (debug) {
   window.__terrain = terrain;
   window.__camera = camera;
   window.__scene = scene;
+  window.__captureFrame = (position, target) => {
+    camera.position.fromArray(position);
+    camera.lookAt(new THREE.Vector3(...target));
+    post.render();
+    return renderer.domElement.toDataURL('image/png');
+  };
 }
 requestAnimationFrame((t) => { last = t; frame(t); });

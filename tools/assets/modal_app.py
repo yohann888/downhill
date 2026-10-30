@@ -159,6 +159,26 @@ def _is_plan_rejection(error: ProviderError) -> bool:
     )
 
 
+def _prepare_image_entry(entry: dict[str, Any]) -> dict[str, Any]:
+    image_path = (MANIFEST_PATH.parent / entry["image"]).resolve()
+    if not image_path.is_relative_to(MANIFEST_PATH.parent.resolve()):
+        raise ValueError("Model image path must be within tools/assets")
+    image_types = {
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".png": "image/png",
+        ".webp": "image/webp",
+    }
+    mime_type = image_types.get(image_path.suffix.lower())
+    if not mime_type:
+        raise ValueError(f"Unsupported model image type: {image_path.suffix}")
+    image_bytes = image_path.read_bytes()
+    if len(image_bytes) > 20 * 1024 * 1024:
+        raise ValueError("Meshy image-to-3D inputs must not exceed 20 MiB")
+    data_uri = f"data:{mime_type};base64,{base64.b64encode(image_bytes).decode('ascii')}"
+    return {**entry, "image_data_uri": data_uri}
+
+
 def _record_audio_response(metadata: dict[str, Any], response) -> None:
     task_ids = metadata.setdefault("task_ids", {})
     for header, key in (
@@ -203,78 +223,118 @@ def generate_model(entry: dict[str, Any], force: bool = False) -> dict[str, str]
         {
             "kind": "models",
             "name": name,
-            "prompt": entry["prompt"],
+            "prompt": entry.get("prompt"),
             "polycount": entry["polycount"],
             "rig": bool(entry.get("rig", False)),
             "task_ids": metadata.get("task_ids", {}),
             "credits_used": metadata.get("credits_used", {}),
         }
     )
+    if entry.get("image"):
+        metadata["source_image"] = entry["image"]
     headers = _headers("Meshy")
     base = "/openapi/v2/text-to-3d"
 
     try:
         if force or not output.exists():
-            preview_id = metadata["task_ids"].get("preview")
-            if not preview_id:
-                preview_response = _json_response(
-                    _request(
-                        "Meshy",
-                        "POST",
-                        f"{MESHY_API}{base}",
-                        headers=headers,
-                        json_body={
-                            "mode": "preview",
-                            "prompt": entry["prompt"],
-                            "model_type": "smart-topology",
-                            "ai_model": "meshy-t2.5",
-                            "target_polycount": entry["polycount"],
-                            "target_formats": ["glb"],
-                        },
+            if entry.get("image_data_uri"):
+                image_id = metadata["task_ids"].get("image")
+                if not image_id:
+                    image_response = _json_response(
+                        _request(
+                            "Meshy",
+                            "POST",
+                            f"{MESHY_API}/openapi/v1/image-to-3d",
+                            headers=headers,
+                            json_body={
+                                "image_url": entry["image_data_uri"],
+                                "model_type": entry.get("model_type", "standard"),
+                                "ai_model": entry.get("ai_model", "meshy-6-lite"),
+                                "geometry_resolution": "standard",
+                                "should_texture": entry.get("should_texture", True),
+                                "enable_pbr": entry.get("enable_pbr", True),
+                                "texture_resolution": entry.get("texture_resolution", "2k"),
+                                "should_remesh": True,
+                                "target_polycount": entry["polycount"],
+                                "target_formats": ["glb"],
+                            },
+                        )
                     )
-                )
-                preview_id = preview_response["result"]
-                metadata["task_ids"]["preview"] = preview_id
-                metadata["status"] = "preview_pending"
+                    image_id = image_response["result"]
+                    metadata["task_ids"]["image"] = image_id
+                    metadata["status"] = "image_pending"
+                    _write_json(sidecar, metadata)
+
+                image_task = _poll_meshy("/openapi/v1/image-to-3d", image_id, headers)
+                if (credits := _task_credits(image_task)) is not None:
+                    metadata["credits_used"]["image"] = credits
+                model_url = (image_task.get("model_urls") or {}).get("glb")
+                if not model_url:
+                    raise RuntimeError(f"Meshy image-to-3D task {image_id} did not return a GLB URL")
+                _download(model_url, output)
+                metadata["status"] = "image_succeeded"
+                _write_json(sidecar, metadata)
+            else:
+                preview_id = metadata["task_ids"].get("preview")
+                if not preview_id:
+                    preview_response = _json_response(
+                        _request(
+                            "Meshy",
+                            "POST",
+                            f"{MESHY_API}{base}",
+                            headers=headers,
+                            json_body={
+                                "mode": "preview",
+                                "prompt": entry["prompt"],
+                                "model_type": "smart-topology",
+                                "ai_model": "meshy-t2.5",
+                                "target_polycount": entry["polycount"],
+                                "target_formats": ["glb"],
+                            },
+                        )
+                    )
+                    preview_id = preview_response["result"]
+                    metadata["task_ids"]["preview"] = preview_id
+                    metadata["status"] = "preview_pending"
+                    _write_json(sidecar, metadata)
+
+                preview = _poll_meshy(base, preview_id, headers)
+                if (credits := _task_credits(preview)) is not None:
+                    metadata["credits_used"]["preview"] = credits
+                metadata["status"] = "preview_succeeded"
                 _write_json(sidecar, metadata)
 
-            preview = _poll_meshy(base, preview_id, headers)
-            if (credits := _task_credits(preview)) is not None:
-                metadata["credits_used"]["preview"] = credits
-            metadata["status"] = "preview_succeeded"
-            _write_json(sidecar, metadata)
-
-            refine_id = metadata["task_ids"].get("refine")
-            if not refine_id:
-                refine_response = _json_response(
-                    _request(
-                        "Meshy",
-                        "POST",
-                        f"{MESHY_API}{base}",
-                        headers=headers,
-                        json_body={
-                            "mode": "refine",
-                            "preview_task_id": preview_id,
-                            "enable_pbr": True,
-                            "texture_resolution": "2k",
-                            "target_formats": ["glb"],
-                        },
+                refine_id = metadata["task_ids"].get("refine")
+                if not refine_id:
+                    refine_response = _json_response(
+                        _request(
+                            "Meshy",
+                            "POST",
+                            f"{MESHY_API}{base}",
+                            headers=headers,
+                            json_body={
+                                "mode": "refine",
+                                "preview_task_id": preview_id,
+                                "enable_pbr": True,
+                                "texture_resolution": "2k",
+                                "target_formats": ["glb"],
+                            },
+                        )
                     )
-                )
-                refine_id = refine_response["result"]
-                metadata["task_ids"]["refine"] = refine_id
-                metadata["status"] = "refine_pending"
-                _write_json(sidecar, metadata)
+                    refine_id = refine_response["result"]
+                    metadata["task_ids"]["refine"] = refine_id
+                    metadata["status"] = "refine_pending"
+                    _write_json(sidecar, metadata)
 
-            refined = _poll_meshy(base, refine_id, headers)
-            if (credits := _task_credits(refined)) is not None:
-                metadata["credits_used"]["refine"] = credits
-            model_url = (refined.get("model_urls") or {}).get("glb")
-            if not model_url:
-                raise RuntimeError(f"Meshy refine task {refine_id} did not return a GLB URL")
-            _download(model_url, output)
-            metadata["status"] = "refine_succeeded"
-            _write_json(sidecar, metadata)
+                refined = _poll_meshy(base, refine_id, headers)
+                if (credits := _task_credits(refined)) is not None:
+                    metadata["credits_used"]["refine"] = credits
+                model_url = (refined.get("model_urls") or {}).get("glb")
+                if not model_url:
+                    raise RuntimeError(f"Meshy refine task {refine_id} did not return a GLB URL")
+                _download(model_url, output)
+                metadata["status"] = "refine_succeeded"
+                _write_json(sidecar, metadata)
 
         if entry.get("rig") and (force or not rigged_output.exists()):
             rig_id = metadata["task_ids"].get("rig")
@@ -524,6 +584,13 @@ def main(kind: str, only: str = "", force: bool = False) -> None:
 
     selected_kinds = list(entries_by_kind) if kind == "all" else [kind]
     only_names = {name.strip() for name in only.split(",") if name.strip()}
+    if "models" in selected_kinds:
+        entries_by_kind["models"] = [
+            _prepare_image_entry(entry)
+            if entry.get("image") and (not only_names or entry["name"] in only_names)
+            else entry
+            for entry in entries_by_kind["models"]
+        ]
     for selected_kind in selected_kinds:
         entries = [
             entry
