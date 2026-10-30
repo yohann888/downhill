@@ -12,8 +12,18 @@
     <div id="hud">
       <div class="hud-top">
         <div class="stat"><span id="speed">0</span><small>km/h</small></div>
-        <div class="progress"><div id="progress-fill"></div></div>
-        <div class="stat"><span id="timer">0.00</span><small>s</small></div>
+        <div class="progress-wrap">
+          <div class="progress">
+            <div id="progress-fill"></div>
+            <div id="checkpoint-marks"></div>
+            <div id="ghost-progress" hidden></div>
+          </div>
+          <span id="progress-percent">0%</span>
+        </div>
+        <div class="timer-stat">
+          <div class="stat"><span id="timer">0.00</span><small>s</small></div>
+          <div id="ghost-status"></div>
+        </div>
       </div>
       <div id="flash"></div>
       <button id="mute" type="button"></button>
@@ -25,17 +35,30 @@
       <div class="panel">
         <h1 id="overlay-title">Downhill</h1>
         <p id="overlay-body">W / Up: pedal &nbsp; S / Down: brake &nbsp; A D / Left Right: steer</p>
+        <div id="start-leaderboard" hidden></div>
+        <form id="finish-controls" hidden>
+          <label for="rider-name">Name</label>
+          <input id="rider-name" name="name" maxlength="12" autocomplete="nickname" />
+          <button type="submit">Submit</button>
+          <div id="finish-actions" hidden>
+            <button id="leaderboard-button" type="button" hidden>Leaderboard</button>
+            <button id="wave-button" type="button">Wave</button>
+          </div>
+          <div id="finish-leaderboard"></div>
+        </form>
         <button id="overlay-button" type="button">Ride</button>
       </div>
     </div>
+    <div id="commentary-subtitle" aria-live="polite"></div>
     <div id="touch">
       <div class="touch-group">
-        <button data-key="left" type="button" aria-label="Steer left">&#9664;</button>
-        <button data-key="right" type="button" aria-label="Steer right">&#9654;</button>
+        <button data-key="left" type="button" aria-label="Steer left"><span>◀</span><small>A</small></button>
+        <button data-key="right" type="button" aria-label="Steer right"><span>▶</span><small>D</small></button>
       </div>
       <div class="touch-group">
-        <button data-key="brake" type="button">Brake</button>
-        <button data-key="throttle" type="button">Pedal</button>
+        <button data-key="brake" type="button"><span>Brake</span><small>S</small></button>
+        <button data-key="throttle" type="button"><span>Pedal</span><small>W</small></button>
+        <button data-key="jump" type="button"><span>Jump</span><small>Space</small></button>
       </div>
     </div>
     <script type="module" src="./src/main.js"></script>

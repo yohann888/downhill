@@ -66,6 +66,7 @@ export function createBike({ x, z, heading = 0 }, terrain) {
     vy: 0,
     airborne: false,
     heavyLanding: false,
+    landingImpact: 0,
     steer: 0,
     brake: 0,
     lean: 0,
@@ -74,13 +75,18 @@ export function createBike({ x, z, heading = 0 }, terrain) {
     crashed: null,
     aLat: 0,
     aLong: 0,
+    skid: 0,
+    jumpCooldown: 0,
     lastGroundY: y,
   };
 }
 
 export function stepBike(state, input, terrain, obstacles, dt) {
-  if (state.crashed) return state;
   state.heavyLanding = false;
+  state.landingImpact = 0;
+  state.skid = 0;
+  state.jumpCooldown = Math.max(0, state.jumpCooldown - dt);
+  if (state.crashed) return state;
 
   const surface = terrain.surfaceAt(state.x, state.z);
   const speedForSteering = Math.max(state.v, 1);
@@ -109,6 +115,13 @@ export function stepBike(state, input, terrain, obstacles, dt) {
     1,
   );
 
+  if (!state.airborne && input.jump && state.jumpCooldown <= 0) {
+    const grade = gradeAlongHeading(terrain, state.x, state.z, state.heading);
+    state.vy += 3 / Math.sqrt(1 + grade * grade);
+    state.jumpCooldown = 0.4;
+    state.airborne = true;
+  }
+
   if (!state.airborne) {
     const grade = gradeAlongHeading(terrain, state.x, state.z, state.heading);
     const theta = Math.atan(grade);
@@ -131,12 +144,12 @@ export function stepBike(state, input, terrain, obstacles, dt) {
     state.aLong = acceleration;
     const demandedLat = (state.v * state.v * Math.tan(Math.abs(state.steer))) / WHEELBASE;
     const availableLat = Math.sqrt(Math.max(0, grip * grip - brakeDemand * brakeDemand));
+    const lateralRatio = demandedLat / Math.max(availableLat, 1e-6);
 
     if (demandedLat > availableLat + 1e-9) {
       state.slipping = true;
       state.aLat = availableLat;
-      const ratio = demandedLat / Math.max(availableLat, 1e-6);
-      if (ratio > WASHOUT_RATIO && state.v > WASHOUT_MIN_SPEED) {
+      if (lateralRatio > WASHOUT_RATIO && state.v > WASHOUT_MIN_SPEED) {
         state.slipTimer += dt;
       } else {
         state.slipTimer = Math.max(0, state.slipTimer - 2 * dt);
@@ -146,6 +159,17 @@ export function stepBike(state, input, terrain, obstacles, dt) {
       state.aLat = demandedLat;
       state.slipTimer = Math.max(0, state.slipTimer - 2 * dt);
     }
+
+    const lateralSkid = clamp(
+      (lateralRatio - 0.8) / (WASHOUT_RATIO - 0.8),
+      0,
+      1,
+    );
+    const brakeGripRatio = brakeDemand / Math.max(grip, 1e-6);
+    const brakingSkid = state.v > 3
+      ? clamp((brakeGripRatio - 0.85) / 0.15, 0, 1)
+      : 0;
+    state.skid = Math.max(lateralSkid, brakingSkid);
 
     if (state.slipTimer > WASHOUT_TIME) state.crashed = 'washout';
 
@@ -194,6 +218,7 @@ export function stepBike(state, input, terrain, obstacles, dt) {
       const groundSlopeVy = state.v * grade;
       const vn = (state.vy - groundSlopeVy) / Math.sqrt(1 + grade * grade);
       const impactSpeed = -vn;
+      state.landingImpact = impactSpeed;
       if (impactSpeed > HARD_LANDING_VN) {
         state.crashed = 'hard landing';
       } else if (impactSpeed >= HEAVY_LANDING_VN) {
@@ -243,5 +268,6 @@ export function stepBike(state, input, terrain, obstacles, dt) {
     }
   }
 
+  if (state.airborne || state.crashed) state.skid = 0;
   return state;
 }

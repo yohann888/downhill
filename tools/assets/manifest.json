@@ -20,13 +20,14 @@
     { "name": "freewheel-loop", "prompt": "bicycle freewheel hub ticking while coasting", "seconds": 3, "loop": true },
     { "name": "pedal-loop", "prompt": "bicycle chain and drivetrain whirr while pedaling hard", "seconds": 3, "loop": true },
     { "name": "crash", "prompt": "mountain biker crash, body and bike tumbling on dirt and rocks", "seconds": 2.5 },
+    { "name": "otter-hit", "prompt": "cartoon otter squeak and surprised chirp, then a comedic boing and soft thud, playful, short, no music", "seconds": 2 },
     { "name": "land", "prompt": "mountain bike landing a jump on packed dirt, suspension thud", "seconds": 1 },
     { "name": "checkpoint", "prompt": "short bright ding, video game checkpoint chime", "seconds": 1 },
     { "name": "finish-cheer", "prompt": "small crowd cheering with cowbells at a mountain bike race finish line", "seconds": 4 },
     { "name": "forest-loop", "prompt": "alpine forest ambience, distant birds, light breeze in pine trees", "seconds": 10, "loop": true }
   ],
   "music": [
-    { "name": "music-ride", "prompt": "energetic instrumental indie rock for an action sports video, driving drums, bright electric guitars, no vocals", "seconds": 90 }
+    { "name": "music-ride", "prompt": "epic cinematic space opera orchestral theme with soaring French horn and brass fanfare, sweeping strings and choir, fused with uplifting 138 BPM progressive trance, supersaw lead, rolling bassline, driving four on the floor kick, a big build and euphoric drop, instrumental, no vocals", "seconds": 90 }
   ],
   "voice": {
     "style": "energetic male sports commentator",
@@ -35,6 +36,7 @@
       { "name": "vo-clean", "text": "Clean line!" },
       { "name": "vo-air", "text": "Big air!" },
       { "name": "vo-crash", "text": "Ooh, that's gotta hurt." },
+      { "name": "vo-ottified", "text": "Ottified!" },
       { "name": "vo-checkpoint", "text": "Checkpoint!" },
       { "name": "vo-best", "text": "New personal best!" },
       { "name": "vo-send", "text": "Send it!" }

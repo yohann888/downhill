@@ -7,21 +7,50 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #000; font-f
 .stat span { font-size: 30px; font-weight: 700; }
 .stat small { margin-left: 4px; font-size: 13px; opacity: .8; }
 .hud-top .stat:last-child { text-align: right; }
-.progress { flex: 1; height: 6px; border-radius: 3px; background: rgba(255,255,255,.25); overflow: hidden; }
+.timer-stat { min-width: 92px; text-align: right; }
+#ghost-status { font-size: 11px; opacity: .9; white-space: nowrap; text-shadow: 0 1px 4px rgba(0,0,0,.6); }
+.progress-wrap { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; }
+.progress { position: relative; flex: 1; height: 10px; border: 1px solid rgba(255,255,255,.9); border-radius: 5px; background: rgba(255,255,255,.25); overflow: hidden; }
 #progress-fill { height: 100%; width: 0; background: #ffb547; }
+#checkpoint-marks { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
+.checkpoint-mark { position: absolute; top: -1px; bottom: -1px; width: 2px; transform: translateX(-50%); background: rgba(255,255,255,.9); box-shadow: 0 0 1px #000; }
+#ghost-progress { position: absolute; top: 50%; left: 0; z-index: 3; width: 8px; height: 8px; transform: translate(-50%, -50%); border: 1px solid #fff; border-radius: 50%; background: #35f6ff; box-shadow: 0 0 4px #35f6ff; pointer-events: none; }
+#ghost-progress[hidden] { display: none; }
+#progress-percent { min-width: 4ch; text-align: right; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; text-shadow: 0 1px 4px rgba(0,0,0,.6); }
 #flash { position: absolute; top: 30%; width: 100%; text-align: center; font-size: 34px; font-weight: 800; letter-spacing: .04em; text-shadow: 0 2px 10px rgba(0,0,0,.6); opacity: 0; transition: opacity .25s; }
 #flash.show { opacity: 1; }
 #overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.35); }
 #overlay.hidden { display: none; }
-.panel { text-align: center; padding: 28px 36px; border-radius: 14px; background: rgba(10,14,20,.72); max-width: 92vw; }
+.panel { text-align: center; padding: 28px 36px; border-radius: 14px; background: rgba(10,14,20,.82); max-width: 92vw; max-height: 90vh; overflow-y: auto; }
 .panel h1 { margin: 0 0 10px; font-size: 40px; letter-spacing: .02em; }
 .panel p { margin: 0 0 18px; opacity: .85; line-height: 1.5; }
 .panel button { font: inherit; font-size: 18px; font-weight: 700; padding: 10px 34px; border: 0; border-radius: 8px; background: #ffb547; color: #1a1206; cursor: pointer; }
-#touch { position: fixed; left: 0; right: 0; bottom: 18px; display: none; justify-content: space-between; padding: 0 18px; }
-.touch-group { display: flex; gap: 12px; }
-#touch button { width: 76px; height: 76px; border-radius: 50%; border: 2px solid rgba(255,255,255,.5); background: rgba(0,0,0,.3); color: #fff; font: inherit; font-size: 16px; font-weight: 700; }
+#finish-controls { display: grid; grid-template-columns: auto minmax(120px, 1fr) auto; align-items: center; gap: 8px; margin: 16px auto; max-width: 620px; }
+#finish-controls[hidden], #start-leaderboard[hidden] { display: none; }
+#finish-controls label { text-align: right; }
+#finish-controls input { min-width: 0; padding: 10px; border: 1px solid rgba(255,255,255,.45); border-radius: 6px; color: #fff; background: rgba(0,0,0,.35); font: inherit; }
+#finish-controls button { padding-inline: 18px; }
+#finish-actions { grid-column: 1 / -1; display: flex; justify-content: center; gap: 10px; }
+#finish-actions[hidden], #leaderboard-button[hidden] { display: none; }
+#finish-leaderboard { grid-column: 1 / -1; }
+#finish-leaderboard[hidden] { display: none; }
+.leaderboard { margin: 12px auto; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.leaderboard th, .leaderboard td { padding: 4px 12px; text-align: left; }
+.leaderboard th { opacity: .7; font-size: 12px; }
+.leaderboard .player-row { color: #ffcf7f; font-weight: 700; }
+#commentary-subtitle { position: fixed; left: 18%; right: 18%; bottom: 100px; z-index: 2; text-align: center; font-size: clamp(18px, 3vw, 28px); font-weight: 700; color: #fff; text-shadow: 0 2px 8px #000; opacity: 0; transition: opacity .2s; pointer-events: none; }
+#commentary-subtitle.show { opacity: 1; }
+#touch { position: fixed; left: 0; right: 0; bottom: 18px; z-index: 3; display: flex; justify-content: space-between; padding: 0 18px; pointer-events: none; }
+#touch[hidden] { display: none; }
+.touch-group { display: flex; gap: 7px; }
+#touch button { width: 54px; height: 46px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; border-radius: 12px; border: 1px solid rgba(255,255,255,.5); background: rgba(0,0,0,.34); color: #fff; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; pointer-events: auto; backdrop-filter: blur(4px); }
+#touch button[data-key="left"], #touch button[data-key="right"] { width: 46px; font-size: 17px; }
+#touch button small { font-size: 9px; line-height: 1; opacity: .7; }
 #touch button.active { background: rgba(255,181,71,.55); }
-@media (pointer: coarse) { #touch { display: flex; } }
+@media (pointer: coarse) {
+  #touch button { width: 62px; height: 52px; }
+  #touch button[data-key="left"], #touch button[data-key="right"] { width: 52px; }
+}
 #mute { position: absolute; right: 16px; top: 58px; pointer-events: auto; font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,.4); background: rgba(0,0,0,.25); color: #fff; cursor: pointer; }
 #volume-label { position: absolute; right: 16px; top: 92px; display: flex; align-items: center; gap: 8px; pointer-events: auto; font-size: 12px; text-shadow: 0 1px 4px rgba(0,0,0,.6); }
 #volume { width: 104px; accent-color: #ffb547; cursor: pointer; }

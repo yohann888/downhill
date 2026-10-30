@@ -4,6 +4,15 @@ function inKickerExclusion(s, kickers) {
   return kickers.some((kicker) => s >= kicker.s - 25 && s <= kicker.s + 15);
 }
 
+export function updateMovingObstacles(obstacles, t) {
+  for (const obstacle of obstacles) {
+    if (!obstacle.walk) continue;
+    const angle = t * obstacle.walk.speed + obstacle.walk.phase;
+    obstacle.x = obstacle.baseX + obstacle.walk.amp * Math.sin(angle);
+    obstacle.dir = Math.sign(Math.cos(angle)) || 1;
+  }
+}
+
 export function createObstacles(terrain, seed = 7) {
   const random = createRandom(seed);
   const obstacles = [];
@@ -75,5 +84,21 @@ export function createObstacles(terrain, seed = 7) {
     obstacles.push(obstacle);
   }
 
+  for (const obstacle of obstacles) {
+    if (obstacle.type !== 'rock') continue;
+    const center = terrain.centerX(obstacle.z);
+    const halfWidth = terrain.halfWidth(obstacle.z);
+    const minX = center - halfWidth + obstacle.r + 0.3;
+    const maxX = center + halfWidth - obstacle.r - 0.3;
+    const range = maxX - minX;
+    const amp = range > 0 ? range / 2 : 0;
+    obstacle.baseX = (minX + maxX) / 2;
+    obstacle.walk = {
+      amp,
+      speed: 0.9 / Math.max(amp, 0.5),
+      phase: random() * Math.PI * 2,
+    };
+  }
+  updateMovingObstacles(obstacles, 0);
   return obstacles.sort((a, b) => b.z - a.z);
 }
