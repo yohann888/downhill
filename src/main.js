@@ -186,6 +186,7 @@ const game = {
   runId: 0,
   runSubmitted: false,
   runSubmitting: false,
+  leaderboardWarmed: false,
   waveMode: false,
   trauma: 0,
   best: Number(localStorage.getItem('downhill-best')) || null,
@@ -228,6 +229,7 @@ function start() {
   game.runId += 1;
   game.runSubmitted = false;
   game.runSubmitting = false;
+  game.leaderboardWarmed = false;
   ghostRecorder.reset();
   game.timeScale = 1;
   slowMoRealTime = 0;
@@ -362,6 +364,7 @@ async function submitRun() {
   game.runSubmitting = true;
   ui.nameInput.disabled = true;
   ui.submitButton.disabled = true;
+  ui.submitButton.textContent = 'Submitting...';
   try {
     const name = ui.nameInput.value.trim() || 'Rider';
     ui.nameInput.value = name;
@@ -390,6 +393,7 @@ async function submitRun() {
       if (!game.runSubmitted) {
         ui.nameInput.disabled = false;
         ui.submitButton.disabled = false;
+        ui.submitButton.textContent = 'Submit';
       }
     }
   }
@@ -416,7 +420,12 @@ function simulate(input) {
   const wasAir = b.airborne;
   updateMovingObstacles(obstacles, game.time);
   stepBike(b, input, terrain, obstacles, DT);
+  if (b.foliageHit) dust.leafBurst(b.foliageHit);
   game.time += DT;
+  if (!game.leaderboardWarmed && -b.z / terrain.courseLength >= 0.8) {
+    game.leaderboardWarmed = true;
+    void getLeaderboard();
+  }
   if (b.landingImpact > 0) {
     game.trauma = Math.min(
       1,

@@ -184,6 +184,7 @@ async def post_commentary(body: dict[str, Any]) -> dict[str, Any]:
     image=image,
     secrets=[api_secret],
     min_containers=0,
+    scaledown_window=300,
 )
 @modal.asgi_app()
 def serve() -> FastAPI:

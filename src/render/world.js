@@ -201,7 +201,10 @@ function buildTrees(terrain, obstacles) {
   const random = createRandom(41);
   const placements = obstacles
     .filter((o) => o.type === 'tree')
-    .map((o) => ({ x: o.x, z: o.z, scale: 0.9 + random() * 0.5 }));
+    .map((o) => {
+      random();
+      return { x: o.x, z: o.z, scale: o.treeScale ?? 1 };
+    });
   for (let s = -30; s <= terrain.courseLength + 50; s += 1.6) {
     const z = -s;
     for (const side of [-1, 1]) {
@@ -259,7 +262,7 @@ function buildTrees(terrain, obstacles) {
       mine.forEach((tree, i) => {
         position.set(tree.x, terrain.heightAt(tree.x, tree.z), tree.z);
         quat.setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw[i]);
-        scale.setScalar(10);
+        scale.setScalar(10 * tree.scale);
         matrix.compose(position, quat, scale);
         mesh.setMatrixAt(i, matrix);
       });

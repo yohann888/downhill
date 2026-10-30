@@ -29,8 +29,10 @@ export function getLeaderboard() {
   return request('/leaderboard');
 }
 
-export function postRun(run) {
-  return request('/run', { body: run });
+export async function postRun(run) {
+  const options = { body: run, timeout: 20000 };
+  const result = await request('/run', options);
+  return result ?? request('/run', options);
 }
 
 export function getCommentary(stats) {
