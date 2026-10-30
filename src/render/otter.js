@@ -40,19 +40,10 @@ function installMotionShader(material, uniforms) {
       '#include <common>',
       `#include <common>
       uniform float uOtterTime;
-      uniform vec3 uRiderPos;
       uniform float uOtterWave;
       float otterSmooth(float a, float b, float x) {
         float t = clamp((x - a) / (b - a), 0.0, 1.0);
         return t * t * (3.0 - 2.0 * t);
-      }
-      vec3 otterRotateX(vec3 p, float a) {
-        float c = cos(a), s = sin(a);
-        return vec3(p.x, c * p.y - s * p.z, s * p.y + c * p.z);
-      }
-      vec3 otterRotateY(vec3 p, float a) {
-        float c = cos(a), s = sin(a);
-        return vec3(c * p.x + s * p.z, p.y, -s * p.x + c * p.z);
       }
       vec3 otterRotateZ(vec3 p, float a) {
         float c = cos(a), s = sin(a);
@@ -62,17 +53,6 @@ function installMotionShader(material, uniforms) {
     shader.vertexShader = shader.vertexShader.replace(
       '#include <begin_vertex>',
       `vec3 transformed = vec3(position);
-      float riderDistance = distance(modelMatrix[3].xyz, uRiderPos);
-      float lookWeight = 1.0 - smoothstep(12.0, 25.0, riderDistance);
-      vec3 riderLocal = (inverse(modelMatrix) * vec4(uRiderPos, 1.0)).xyz;
-      float headWeight = otterSmooth(0.69, 0.84, position.y);
-      vec3 headPivot = vec3(0.0, 0.77, 0.025);
-      vec3 headOffset = transformed - headPivot;
-      float headYaw = clamp(atan(riderLocal.x, riderLocal.z), -0.7, 0.7);
-      headOffset = otterRotateY(headOffset, headYaw * lookWeight * headWeight);
-      headOffset = otterRotateX(headOffset, -0.436 * lookWeight * headWeight);
-      transformed = headPivot + headOffset;
-
       float pawX = otterSmooth(0.17, 0.3, position.x)
         * (1.0 - otterSmooth(0.38, 0.52, position.x));
       float pawY = otterSmooth(0.36, 0.44, position.y)
@@ -112,7 +92,6 @@ export function createOtterStickerMaterial(renderer) {
 export function prepareOtterMesh(mesh, renderer, stickerMaterial) {
   const uniforms = {
     uOtterTime: { value: 0 },
-    uRiderPos: { value: new THREE.Vector3() },
     uOtterWave: { value: 0 },
   };
   const makeMaterial = (source) => {
@@ -133,11 +112,10 @@ export function prepareOtterMesh(mesh, renderer, stickerMaterial) {
   return mesh;
 }
 
-export function updateOtterMesh(mesh, time, riderPosition, wave = 0) {
+export function updateOtterMesh(mesh, time, wave = 0) {
   const uniforms = mesh?.userData.otterUniforms;
   if (!uniforms) return;
   uniforms.uOtterTime.value = time;
-  uniforms.uRiderPos.value.copy(riderPosition);
   uniforms.uOtterWave.value = wave;
 }
 

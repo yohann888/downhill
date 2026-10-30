@@ -233,7 +233,7 @@ describe('bike physics', () => {
   it('launches from a step drop and distinguishes a hard landing', () => {
     for (const { drop, expectedCrash } of [
       { drop: 1.5, expectedCrash: null },
-      { drop: 7, expectedCrash: 'hard landing' },
+      { drop: 18, expectedCrash: 'hard landing' },
     ]) {
       const terrain = createStepDropTerrain(drop);
       const bike = createBike({ x: 0, z: 0 }, terrain);
@@ -251,25 +251,56 @@ describe('bike physics', () => {
     }
   });
 
-  it('scrubs speed on a medium-hard 4m flat landing without crashing', () => {
-    const bike = fallFrom(4, 0, 10);
+  it('keeps speed through a medium-hard 4m flat landing without crashing', () => {
+    const terrain = createPlaneTerrain();
+    const bike = createBike({ x: 0, z: 0 }, terrain);
+    bike.y += 4;
+    bike.airborne = true;
+    bike.v = 10;
+    let speedBeforeLanding = bike.v;
+    for (let elapsed = 0; elapsed < 5 && bike.airborne; elapsed += DT) {
+      speedBeforeLanding = bike.v;
+      stepBike(bike, noInput, terrain, [], DT);
+    }
 
     expect(bike.airborne).toBe(false);
     expect(bike.crashed).toBeNull();
     expect(bike.heavyLanding).toBe(true);
     expect(bike.landingImpact).toBeCloseTo(Math.sqrt(2 * G * 4), 0);
-    expect(bike.v).toBeLessThan(10);
+    expect(bike.v).toBeGreaterThan(speedBeforeLanding * 0.99);
+    expect(bike.v).toBeGreaterThan(9.5);
 
     stepBike(bike, noInput, createPlaneTerrain(), [], DT);
     expect(bike.heavyLanding).toBe(false);
     expect(bike.landingImpact).toBe(0);
   });
 
-  it('crashes on a 7m fall onto flat ground', () => {
-    const bike = fallFrom(7, 0, 10);
+  it('crashes on a 17m fall onto flat ground', () => {
+    const bike = fallFrom(17, 0, 10);
 
     expect(bike.airborne).toBe(false);
     expect(bike.crashed).toBe('hard landing');
+  });
+
+  it('survives a 15m/s impact but crashes at 17m/s', () => {
+    const landAtImpact = (speed) => {
+      const terrain = createPlaneTerrain();
+      const bike = createBike({ x: 0, z: 0 }, terrain);
+      bike.y += 0.02;
+      bike.airborne = true;
+      bike.v = 10;
+      bike.vy = -speed;
+      stepBike(bike, noInput, terrain, [], DT);
+      return bike;
+    };
+    const mediumImpact = landAtImpact(15);
+    const hardImpact = landAtImpact(17);
+
+    expect(mediumImpact.crashed).toBeNull();
+    expect(mediumImpact.heavyLanding).toBe(true);
+    expect(mediumImpact.landingImpact).toBeGreaterThan(15);
+    expect(hardImpact.crashed).toBe('hard landing');
+    expect(hardImpact.landingImpact).toBeGreaterThan(17);
   });
 
   it('does not scrub speed landing onto a 0.3 downslope at 18m/s', () => {

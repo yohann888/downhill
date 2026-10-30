@@ -12,6 +12,7 @@ import { loadModels } from './render/assets.js';
 import { createPost } from './render/post.js';
 import { airTimeBonus, nextQualityLevel, slowMoTarget } from './feel.js';
 import { getCommentary, getLeaderboard, postRun } from './api.js';
+import { buildRankOverlayRows } from './leaderboard.js';
 import { createRecorder, sampleGhost } from './ghost.js';
 
 const CRASH_PENALTY = 3;
@@ -71,10 +72,12 @@ const ui = {
   finishForm: document.getElementById('finish-controls'),
   nameInput: document.getElementById('rider-name'),
   submitButton: document.querySelector('#finish-controls button[type="submit"]'),
-  finishActions: document.getElementById('finish-actions'),
-  leaderboardButton: document.getElementById('leaderboard-button'),
-  waveButton: document.getElementById('wave-button'),
   finishLeaderboard: document.getElementById('finish-leaderboard'),
+  wavePanel: document.getElementById('wave-panel'),
+  waveLeaderboard: document.getElementById('wave-leaderboard'),
+  rideAgain: document.getElementById('wave-ride-again'),
+  hud: document.getElementById('hud'),
+  touch: document.getElementById('touch'),
   ghostStatus: document.getElementById('ghost-status'),
   subtitle: document.getElementById('commentary-subtitle'),
   mute: document.getElementById('mute'),
@@ -109,7 +112,7 @@ const KEYMAP = {
 };
 window.addEventListener('keydown', (e) => {
   if (game.waveMode) {
-    endWave();
+    if (e.code === 'Enter' || e.code === 'KeyR') start();
     e.preventDefault();
     return;
   }
@@ -152,13 +155,7 @@ ui.finishForm.addEventListener('submit', (event) => {
   event.preventDefault();
   submitRun();
 });
-ui.leaderboardButton.addEventListener('click', () => {
-  ui.finishLeaderboard.hidden = !ui.finishLeaderboard.hidden;
-});
-ui.waveButton.addEventListener('click', startWave);
-window.addEventListener('pointerdown', () => {
-  if (game.waveMode) endWave();
-});
+ui.rideAgain.addEventListener('click', () => start());
 
 const readInput = () => ({
   throttle: keys.throttle ? 1 : 0,
@@ -213,6 +210,7 @@ function startPose() {
 }
 
 function start() {
+  if (game.waveMode) endWave();
   audio.unlock().then(() => audio.event('start'));
   const p = startPose();
   placeBike(p.x, p.z, p.heading, 0);
@@ -239,10 +237,11 @@ function start() {
   ui.nameInput.disabled = false;
   ui.submitButton.disabled = false;
   ui.submitButton.textContent = 'Submit';
-  ui.finishActions.hidden = true;
-  ui.leaderboardButton.hidden = true;
   ui.finishLeaderboard.hidden = true;
   ui.finishLeaderboard.replaceChildren();
+  ui.wavePanel.hidden = true;
+  ui.hud.classList.remove('wave-mode');
+  ui.touch.hidden = false;
   ui.startLeaderboard.hidden = leaderboardEntries.length === 0;
   ui.overlay.classList.add('hidden');
   snapCamera();
@@ -315,6 +314,34 @@ function renderLeaderboard(container, entries, playerRank = null) {
   container.append(table);
 }
 
+function renderRankOverlay(container, rows) {
+  container.replaceChildren();
+  if (!rows.length) return;
+  const table = document.createElement('table');
+  table.className = 'leaderboard';
+  const head = document.createElement('thead');
+  const header = document.createElement('tr');
+  for (const label of ['Rank', 'Name', 'Time']) {
+    const cell = document.createElement('th');
+    cell.textContent = label;
+    header.append(cell);
+  }
+  head.append(header);
+  const body = document.createElement('tbody');
+  for (const entry of rows) {
+    const row = document.createElement('tr');
+    if (entry.highlighted) row.className = 'player-row';
+    for (const value of [String(entry.rank), entry.name, `${Number(entry.time).toFixed(2)} s`]) {
+      const cell = document.createElement('td');
+      cell.textContent = value;
+      row.append(cell);
+    }
+    body.append(row);
+  }
+  table.append(head, body);
+  container.append(table);
+}
+
 function makeRunStats(name = 'Rider') {
   const totalTime = game.time + game.penalty - game.bonus;
   return {
@@ -349,10 +376,9 @@ async function submitRun() {
     }
     game.runSubmitted = true;
     ui.submitButton.textContent = 'Submitted';
-    ui.leaderboardButton.hidden = false;
     leaderboardEntries = result.top || [];
     renderLeaderboard(ui.startLeaderboard, leaderboardEntries.slice(0, 3));
-    renderLeaderboard(ui.finishLeaderboard, result.top, result.rank);
+    startWave(result, run);
   } catch {
     if (runId === game.runId) {
       ui.finishLeaderboard.textContent = 'Leaderboard unavailable';
@@ -371,7 +397,7 @@ async function submitRun() {
 
 function showCommentary(result) {
   if (!result?.text) return;
-  ui.subtitle.textContent = result.text;
+  ui.subtitle.textContent = result.text.replace(/[—–]/g, '-');
   ui.subtitle.classList.add('show');
   clearTimeout(commentaryTimeout);
   commentaryTimeout = setTimeout(() => ui.subtitle.classList.remove('show'), 6000);
@@ -405,7 +431,7 @@ function simulate(input) {
   }
   if (wasAir && !b.airborne && !b.crashed) {
     audio.event('land');
-    const bonus = airTimeBonus(game.airTime, b.heavyLanding);
+    const bonus = airTimeBonus(game.airTime);
     game.bonus += bonus;
     if (bonus > 0) flash(`Big air -${bonus.toFixed(1)}s`, 1200);
   }
@@ -448,8 +474,6 @@ function simulate(input) {
       'Ride again',
     );
     ui.finishForm.hidden = false;
-    ui.finishActions.hidden = false;
-    ui.leaderboardButton.hidden = true;
     ui.finishLeaderboard.hidden = true;
     ui.startLeaderboard.hidden = true;
     ui.nameInput.value = localStorage.getItem('downhill-name') || 'Rider';
@@ -462,13 +486,19 @@ const cam = { pos: new THREE.Vector3(), look: new THREE.Vector3(), fov: 65 };
 const render = { x: 0, y: 0, z: 0, heading: 0, lean: 0 };
 const waveCameraPos = new THREE.Vector3();
 const waveCameraLook = new THREE.Vector3();
-const riderWorldPosition = new THREE.Vector3();
 let waveOtter = null;
 let waveStartedAt = 0;
 let waveBikeState = null;
 
-function startWave() {
+function startWave(result, playerRun) {
   if (game.mode !== 'finished' || game.waveMode) return;
+  renderRankOverlay(
+    ui.waveLeaderboard,
+    buildRankOverlayRows(result?.top, result?.rank, playerRun),
+  );
+  ui.wavePanel.hidden = false;
+  ui.hud.classList.add('wave-mode');
+  ui.touch.hidden = true;
   const bike = game.bike;
   const heading = bike.heading;
   const fx = Math.sin(heading);
@@ -512,6 +542,9 @@ function startWave() {
 function endWave() {
   if (!game.waveMode) return;
   game.waveMode = false;
+  ui.wavePanel.hidden = true;
+  ui.hud.classList.remove('wave-mode');
+  ui.touch.hidden = false;
   if (waveOtter) {
     scene.remove(waveOtter);
     world.disposeWaveOtter(waveOtter);
@@ -722,12 +755,10 @@ function frame(now) {
   interpolate(accumulator / DT);
   model.root.position.set(render.x, render.y, render.z);
   const waveElapsed = game.waveMode ? (performance.now() - waveStartedAt) / 1000 : 0;
-  if (game.waveMode && waveElapsed >= 7) endWave();
   model.setWavePose(game.waveMode, waveElapsed);
-  riderWorldPosition.set(game.bike.x, game.bike.y, game.bike.z);
   if (game.waveMode && waveOtter) {
     const waveAmount = Math.max(0, Math.min(1, (waveElapsed - 1.5) / 0.35));
-    world.updateWaveOtter(waveOtter, waveElapsed, riderWorldPosition, waveAmount);
+    world.updateWaveOtter(waveOtter, waveElapsed, waveAmount);
   }
   model.update(
     { ...game.bike, heading: render.heading, lean: render.lean },
@@ -761,7 +792,7 @@ function frame(now) {
     ghostModel.root.visible = false;
   }
   world.followSun(model.root.position);
-  world.update(game.time, riderWorldPosition);
+  world.update(game.time);
   dust.update(game.bike, game.mode === 'riding', dt);
   audio.update(game.bike, input, game.mode === 'riding', dt, game.timeScale);
   updateCamera(dt);

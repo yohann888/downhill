@@ -6,8 +6,7 @@ export function nextQualityLevel(avgFps, level) {
   return avgFps < 45 && level < 3 ? level + 1 : level;
 }
 
-export function airTimeBonus(airTime, heavyLanding = false) {
+export function airTimeBonus(airTime) {
   if (!Number.isFinite(airTime) || airTime <= 0.8) return 0;
-  const bonus = Math.min(3, airTime - 0.5) * (heavyLanding ? 0.5 : 1);
-  return Math.round(bonus * 10) / 10;
+  return Math.round(Math.min(6, 1.5 * (airTime - 0.5)) * 10) / 10;
 }

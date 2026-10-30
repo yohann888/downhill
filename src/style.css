@@ -30,14 +30,19 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #000; font-f
 #finish-controls label { text-align: right; }
 #finish-controls input { min-width: 0; padding: 10px; border: 1px solid rgba(255,255,255,.45); border-radius: 6px; color: #fff; background: rgba(0,0,0,.35); font: inherit; }
 #finish-controls button { padding-inline: 18px; }
-#finish-actions { grid-column: 1 / -1; display: flex; justify-content: center; gap: 10px; }
-#finish-actions[hidden], #leaderboard-button[hidden] { display: none; }
 #finish-leaderboard { grid-column: 1 / -1; }
 #finish-leaderboard[hidden] { display: none; }
 .leaderboard { margin: 12px auto; border-collapse: collapse; font-variant-numeric: tabular-nums; }
 .leaderboard th, .leaderboard td { padding: 4px 12px; text-align: left; }
 .leaderboard th { opacity: .7; font-size: 12px; }
 .leaderboard .player-row { color: #ffcf7f; font-weight: 700; }
+#hud.wave-mode .hud-top { display: none; }
+#wave-panel { position: fixed; z-index: 4; top: 14px; left: 14px; width: min(278px, calc(100vw - 28px)); max-height: calc(100vh - 28px); overflow: auto; padding: 10px 12px; border: 1px solid rgba(255,255,255,.35); border-radius: 10px; background: rgba(8,12,16,.68); backdrop-filter: blur(7px); pointer-events: auto; }
+#wave-panel[hidden] { display: none; }
+#wave-panel h2 { margin: 0; font-size: 16px; }
+#wave-panel .leaderboard { width: 100%; margin: 6px 0 10px; font-size: 12px; }
+#wave-panel .leaderboard th, #wave-panel .leaderboard td { padding: 3px 5px; }
+#wave-ride-again { display: block; width: 100%; padding: 6px 10px; border: 1px solid rgba(255,255,255,.4); border-radius: 6px; background: rgba(255,181,71,.9); color: #1a1206; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
 #commentary-subtitle { position: fixed; left: 18%; right: 18%; bottom: 100px; z-index: 2; text-align: center; font-size: clamp(18px, 3vw, 28px); font-weight: 700; color: #fff; text-shadow: 0 2px 8px #000; opacity: 0; transition: opacity .2s; pointer-events: none; }
 #commentary-subtitle.show { opacity: 1; }
 #touch { position: fixed; left: 0; right: 0; bottom: 18px; z-index: 3; display: flex; justify-content: space-between; padding: 0 18px; pointer-events: none; }
