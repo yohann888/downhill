@@ -6,12 +6,17 @@ const loader = new GLTFLoader();
 loader.setMeshoptDecoder(MeshoptDecoder);
 
 export async function loadModels(names) {
+  const debug = new URLSearchParams(window.location.search).has('debug');
   const entries = await Promise.all(
     names.map(async (name) => {
       try {
         const gltf = await loader.loadAsync(`./assets/models/${name}.glb`);
         return [name, gltf];
-      } catch {
+      } catch (error) {
+        if (debug) {
+          window.__assetLoadErrors ??= {};
+          window.__assetLoadErrors[name] = error instanceof Error ? error.message : String(error);
+        }
         return [name, null];
       }
     }),

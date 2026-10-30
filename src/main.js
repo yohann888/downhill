@@ -319,12 +319,38 @@ const p = startPose();
 placeBike(p.x, p.z, p.heading, 0);
 snapCamera();
 const debug = new URLSearchParams(window.location.search).has('debug');
-loadModels(['rider-body', 'bike-body', 'boulder', 'rock-flat', 'stump', 'log', 'pine-a', 'pine-b', 'otter']).then((models) => {
+const modelNames = ['rider-body', 'bike-frame', 'bike-wheel', 'boulder', 'rock-flat', 'stump', 'log', 'pine-a', 'pine-b', 'otter'];
+if (debug) {
+  game.assetsReady = false;
+  game.assetStatus = { state: 'loading', loaded: [], missing: [] };
+  window.__assetLoadErrors = {};
+  window.__riderModel = model;
+}
+loadModels(modelNames).then((models) => {
   if (debug) window.__models = models;
-  if (models['rider-body'] && models['bike-body']) {
-    model.setAssets({ riderBody: models['rider-body'], bikeBody: models['bike-body'] });
-  }
+  const riderApplied = models['rider-body'] && models['bike-frame'] && models['bike-wheel']
+    ? model.setAssets({
+      riderBody: models['rider-body'],
+      bikeFrame: models['bike-frame'],
+      bikeWheel: models['bike-wheel'],
+    })
+    : false;
   world.applyModels(models);
+  if (debug) {
+    game.assetStatus = {
+      state: riderApplied ? 'ready' : 'fallback',
+      loaded: Object.keys(models),
+      missing: modelNames.filter((name) => !models[name]),
+      rider: model.getAssetStatus(),
+      loadErrors: { ...window.__assetLoadErrors },
+    };
+    game.assetsReady = Boolean(riderApplied);
+  }
+}).catch((error) => {
+  if (debug) {
+    game.assetStatus = { state: 'error', error: String(error), loadErrors: { ...window.__assetLoadErrors } };
+    game.assetsReady = false;
+  }
 });
 if (debug) {
   window.__game = game;

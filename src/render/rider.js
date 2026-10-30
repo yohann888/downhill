@@ -3,6 +3,8 @@ import * as THREE from 'three';
 const WHEEL_R = 0.36;
 const HALF_BASE = 0.575;
 const PEDAL_R = 0.17;
+const CRANK_Y = WHEEL_R + PEDAL_R;
+const CRANK_Z = 0.02;
 
 function bar(material, from, to, thickness = 0.045) {
   const a = new THREE.Vector3(...from);
@@ -51,13 +53,27 @@ function stepVectorSpring(state, target, dt, omega = 14) {
 }
 
 function normalizedBoneName(name) {
-  return name.replace(/^mixamorig:/i, '').replace(/[^a-z0-9]/gi, '').toLowerCase();
+  return name.replace(/^mixamorig:?/i, '').replace(/[^a-z0-9]/gi, '').toLowerCase();
 }
 
 function getRiderBones(scene) {
   const byName = new Map();
+  const diagnostics = [];
+  const addBone = (bone) => {
+    if (bone?.isBone) byName.set(normalizedBoneName(bone.name), bone);
+  };
   scene.traverse((object) => {
-    if (object.isBone) byName.set(normalizedBoneName(object.name), object);
+    if (object.name || object.isSkinnedMesh || object.skeleton) {
+      diagnostics.push({
+        name: object.name,
+        type: object.type,
+        isBone: Boolean(object.isBone),
+        isSkinnedMesh: Boolean(object.isSkinnedMesh),
+        skeletonBones: object.skeleton?.bones?.length || 0,
+      });
+    }
+    addBone(object);
+    if (object.isSkinnedMesh) object.skeleton?.bones.forEach(addBone);
   });
   const find = (...names) => names.map((name) => byName.get(name.toLowerCase())).find(Boolean) || null;
   const bones = {
@@ -86,7 +102,7 @@ function getRiderBones(scene) {
   for (const bone of byName.values()) {
     bind.set(bone, { position: bone.position.clone(), quaternion: bone.quaternion.clone() });
   }
-  return { bones, bind };
+  return { bones, bind, diagnostics };
 }
 
 function boneWorldPosition(bone) {
@@ -242,18 +258,31 @@ export function createRiderModel() {
   let handChains = [];
   let assetSteer = null;
   let assetCrank = null;
+  let assetFrontWheel = null;
+  let assetRearWheel = null;
   let lastAirSpeed = 0;
   let wasAirborne = false;
+  let assetStatus = { ready: false, reason: 'Assets have not been applied' };
 
-  function setAssets({ riderBody, bikeBody } = {}) {
-    if (!riderBody?.scene || !bikeBody?.scene) return false;
+  function setAssets({ riderBody, bikeFrame, bikeWheel } = {}) {
+    const failAssetSetup = (reason, details = {}) => {
+      assetHolder.clear();
+      assetHolder.visible = false;
+      procedural.visible = true;
+      assetStatus = { ready: false, reason, ...details };
+      return false;
+    };
+    if (!riderBody?.scene || !bikeFrame?.scene || !bikeWheel?.scene) {
+      return failAssetSetup('Missing rider-body, bike-frame, or bike-wheel scene');
+    }
+    assetStatus = { ready: false, reason: 'Validating rider and bike models' };
     assetHolder.clear();
     assetHolder.scale.setScalar(1);
     assetHolder.position.set(0, 0, 0);
     assetHolder.rotation.set(0, 0, 0);
 
     bikeAsset = new THREE.Group();
-    const bikeScene = bikeBody.scene;
+    const bikeScene = bikeFrame.scene;
     bikeAsset.add(bikeScene);
     assetHolder.add(bikeAsset);
 
@@ -265,20 +294,41 @@ export function createRiderModel() {
     const bikeBox = new THREE.Box3().setFromObject(bikeScene);
     const bikeSize = bikeBox.getSize(new THREE.Vector3());
     const bikeCenter = bikeBox.getCenter(new THREE.Vector3());
-    if (bikeSize.x < 1e-4 || bikeSize.y < 1e-4) {
-      assetHolder.clear();
-      return false;
+    if (bikeSize.x < 1e-4 || bikeSize.y < 1e-4 || bikeSize.z < 1e-4) {
+      return failAssetSetup(`Bike bounds are invalid: ${bikeSize.toArray().join(', ')}`);
     }
-    const bikeScale = (2 * (HALF_BASE + WHEEL_R)) / bikeSize.x;
+    const bikeScale = (2 * HALF_BASE) / bikeSize.z;
     bikeAsset.scale.setScalar(bikeScale);
-    bikeAsset.rotation.y = -Math.PI / 2;
+    bikeAsset.rotation.y = Math.PI;
+    bikeAsset.position.y = WHEEL_R;
     bikeScene.position.set(-bikeCenter.x, -bikeBox.min.y, -bikeCenter.z);
+
+    const wheelBox = new THREE.Box3().setFromObject(bikeWheel.scene);
+    const wheelSize = wheelBox.getSize(new THREE.Vector3());
+    const wheelDiameter = Math.max(wheelSize.x, wheelSize.y);
+    if (wheelDiameter < 1e-4) {
+      return failAssetSetup(`Bike wheel bounds are invalid: ${wheelSize.toArray().join(', ')}`);
+    }
+    const wheelCenter = wheelBox.getCenter(new THREE.Vector3());
+    const wheelScale = (2 * WHEEL_R) / wheelDiameter;
+    const makeSpinningWheel = (parent, position) => {
+      const pivot = new THREE.Group();
+      pivot.position.copy(position);
+      parent.add(pivot);
+      const mount = new THREE.Group();
+      mount.rotation.y = Math.PI / 2;
+      mount.scale.setScalar(wheelScale);
+      pivot.add(mount);
+      const wheelScene = bikeWheel.scene.clone(true);
+      wheelScene.position.sub(wheelCenter);
+      mount.add(wheelScene);
+      return pivot;
+    };
 
     const riderBox = new THREE.Box3().setFromObject(riderScene);
     const riderSize = riderBox.getSize(new THREE.Vector3());
     if (riderSize.y < 1e-4) {
-      assetHolder.clear();
-      return false;
+      return failAssetSetup(`Rider height is invalid: ${riderSize.y}`);
     }
     riderRoot.scale.setScalar(1.7 / riderSize.y);
     riderRoot.rotation.y = Math.PI;
@@ -288,8 +338,13 @@ export function createRiderModel() {
     assetSteer = new THREE.Group();
     assetSteer.position.set(0, WHEEL_R, -HALF_BASE);
     assetHolder.add(assetSteer);
+    assetFrontWheel = makeSpinningWheel(assetSteer, new THREE.Vector3());
+    assetRearWheel = makeSpinningWheel(
+      assetHolder,
+      new THREE.Vector3(0, WHEEL_R, HALF_BASE),
+    );
     assetCrank = new THREE.Group();
-    assetCrank.position.set(0, 0.35, 0.02);
+    assetCrank.position.set(0, CRANK_Y, CRANK_Z);
     assetCrank.add(bar(darkMat, [0.075, 0, 0], [0.075, -PEDAL_R, 0], 0.012));
     assetCrank.add(bar(darkMat, [-0.075, 0, 0], [-0.075, PEDAL_R, 0], 0.012));
     for (const side of [-1, 1]) {
@@ -303,7 +358,7 @@ export function createRiderModel() {
     root.updateMatrixWorld(true);
     bikeScene.updateMatrixWorld(true);
     riderScene.updateMatrixWorld(true);
-    const { bones, bind } = getRiderBones(riderScene);
+    const { bones, bind, diagnostics } = getRiderBones(riderScene);
     riderBones = bones;
     bindBones = bind;
     const required = [
@@ -315,9 +370,8 @@ export function createRiderModel() {
       bones.leftShoulder, bones.rightShoulder, bones.neck,
     ];
     if (required.some((bone) => !bone)) {
-      assetHolder.clear();
-      assetHolder.visible = false;
-      return false;
+      const missing = Object.entries(bones).filter(([, bone]) => !bone).map(([name]) => name);
+      return failAssetSetup(`Missing rider bones: ${missing.join(', ')}`, { diagnostics });
     }
 
     const leftShoulder = boneWorldPosition(bones.leftShoulder);
@@ -329,9 +383,7 @@ export function createRiderModel() {
     const up = neckPosition.sub(hipsPosition).transformDirection(inverseHolder).normalize();
     const forward = up.clone().cross(lateral).normalize();
     if (lateral.lengthSq() < 1e-6 || up.lengthSq() < 1e-6 || forward.lengthSq() < 1e-6) {
-      assetHolder.clear();
-      assetHolder.visible = false;
-      return false;
+      return failAssetSetup('Could not derive bind-space bone directions');
     }
     boneAxes = { lateral, forward };
     footChains = [
@@ -343,9 +395,7 @@ export function createRiderModel() {
       makeChain(bones.rightArm, bones.rightForeArm, bones.rightHand),
     ];
     if (footChains.some((chain) => !chain) || handChains.some((chain) => !chain)) {
-      assetHolder.clear();
-      assetHolder.visible = false;
-      return false;
+      return failAssetSetup('Rider arm or leg chain has a zero-length bind segment');
     }
     footTargets.forEach((target) => {
       target.x.value = 0;
@@ -359,6 +409,7 @@ export function createRiderModel() {
     });
     assetHolder.visible = true;
     procedural.visible = false;
+    assetStatus = { ready: true, reason: null, bike: 'bike-frame with spinning bike-wheel overlays' };
     return true;
   }
 
@@ -373,8 +424,8 @@ export function createRiderModel() {
     const angle = phase + (side > 0 ? Math.PI : 0);
     return new THREE.Vector3(
       side * 0.075,
-      0.35 + PEDAL_R * Math.cos(angle),
-      0.02 + PEDAL_R * Math.sin(angle),
+      CRANK_Y + PEDAL_R * Math.cos(angle),
+      CRANK_Z + PEDAL_R * Math.sin(angle),
     );
   }
 
@@ -423,6 +474,8 @@ export function createRiderModel() {
 
     assetSteer.rotation.y = -bike.steer;
     assetCrank.rotation.x = cadenceSpring.value;
+    assetFrontWheel.rotation.x -= (bike.v / WHEEL_R) * dt;
+    assetRearWheel.rotation.x -= (bike.v / WHEEL_R) * dt;
     root.updateMatrixWorld(true);
 
     for (const [index, side] of [-1, 1].entries()) {
@@ -450,6 +503,9 @@ export function createRiderModel() {
   return {
     root,
     setAssets,
+    getAssetStatus() {
+      return { ...assetStatus };
+    },
     update(bike, input, grade, dt) {
       const speed01 = Math.min(1, bike.v / 16);
       const targetPitch = bike.airborne
