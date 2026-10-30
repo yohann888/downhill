@@ -4,6 +4,7 @@ import {
   BRAKE_RAMP,
   CDA,
   G,
+  HEAVY_LANDING_VN,
   HARD_LANDING_VN,
   M,
   OBSTACLE_CRASH_SPEED,
@@ -64,6 +65,7 @@ export function createBike({ x, z, heading = 0 }, terrain) {
     v: 0,
     vy: 0,
     airborne: false,
+    heavyLanding: false,
     steer: 0,
     brake: 0,
     lean: 0,
@@ -78,6 +80,7 @@ export function createBike({ x, z, heading = 0 }, terrain) {
 
 export function stepBike(state, input, terrain, obstacles, dt) {
   if (state.crashed) return state;
+  state.heavyLanding = false;
 
   const surface = terrain.surfaceAt(state.x, state.z);
   const speedForSteering = Math.max(state.v, 1);
@@ -189,8 +192,13 @@ export function stepBike(state, input, terrain, obstacles, dt) {
     if (state.y <= groundY) {
       const grade = gradeAlongHeading(terrain, state.x, state.z, state.heading);
       const groundSlopeVy = state.v * grade;
-      if (state.vy - groundSlopeVy < -HARD_LANDING_VN) {
+      const vn = (state.vy - groundSlopeVy) / Math.sqrt(1 + grade * grade);
+      const impactSpeed = -vn;
+      if (impactSpeed > HARD_LANDING_VN) {
         state.crashed = 'hard landing';
+      } else if (impactSpeed >= HEAVY_LANDING_VN) {
+        state.v *= 0.85;
+        state.heavyLanding = true;
       }
       state.y = groundY;
       state.vy = groundSlopeVy;
