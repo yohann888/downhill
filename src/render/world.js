@@ -397,7 +397,21 @@ export function buildWorld(scene, renderer, terrain, obstacles) {
   return {
     applyModels(models) {
       const pick = (name, axis) => (models[name] ? unitMesh(models[name], axis) : null);
-      trees.userData.swap([pick('pine-a', 'y'), pick('pine-b', 'y')]);
+      const pine = (name) => {
+        const model = pick(name, 'y');
+        if (!model) return null;
+        const materials = Array.isArray(model.material) ? model.material : [model.material];
+        for (const material of materials) {
+          material.envMap = scene.environment;
+          material.envMapIntensity = 0.2;
+          material.metalness = 0;
+          material.roughness = 0.95;
+          material.roughnessMap = null;
+          material.needsUpdate = true;
+        }
+        return model;
+      };
+      trees.userData.swap([pine('pine-a'), pine('pine-b')]);
       const rock = pick('boulder', 'xz');
       obstacleGroup.userData.swap({
         boulder: rock,
