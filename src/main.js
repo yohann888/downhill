@@ -184,7 +184,7 @@ function simulate(input) {
   if (next && s >= next.s) {
     game.checkpoint += 1;
     flash(`Checkpoint ${game.checkpoint + 1}`, 900);
-    audio.event('checkpoint', !game.crashedSinceCheckpoint);
+    audio.event('checkpoint', !game.crashedSinceCheckpoint && !b.crashed);
     game.crashedSinceCheckpoint = false;
   }
   if (b.crashed) {
