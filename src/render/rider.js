@@ -289,7 +289,7 @@ export function createRiderModel() {
       return failAssetSetup(`Bike bounds are invalid: ${bikeSize.toArray().join(', ')}`);
     }
 
-    const riderScene = riderBody.scene;
+    riderScene = riderBody.scene;
     const riderBox = new THREE.Box3().setFromObject(riderScene);
     const riderSize = riderBox.getSize(new THREE.Vector3());
     if (riderSize.y < 1e-4) {
