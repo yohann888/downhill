@@ -40,16 +40,17 @@
           <label for="rider-name">Name</label>
           <input id="rider-name" name="name" maxlength="12" autocomplete="nickname" />
           <button type="submit">Submit</button>
-          <div id="finish-actions" hidden>
-            <button id="leaderboard-button" type="button" hidden>Leaderboard</button>
-            <button id="wave-button" type="button">Wave</button>
-          </div>
           <div id="finish-leaderboard"></div>
         </form>
         <button id="overlay-button" type="button">Ride</button>
       </div>
     </div>
     <div id="commentary-subtitle" aria-live="polite"></div>
+    <section id="wave-panel" hidden aria-label="Submitted score ranks">
+      <h2>Leaderboard</h2>
+      <div id="wave-leaderboard"></div>
+      <button id="wave-ride-again" type="button">Ride again</button>
+    </section>
     <div id="touch">
       <div class="touch-group">
         <button data-key="left" type="button" aria-label="Steer left"><span>◀</span><small>A</small></button>

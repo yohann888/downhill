@@ -352,7 +352,7 @@ function buildObstacles(terrain, obstacles, renderer) {
     }
   };
   let lastTime = 0;
-  group.userData.update = (time, riderPosition = new THREE.Vector3()) => {
+  group.userData.update = (time) => {
     const deltaTime = Math.max(0, Math.min(0.1, time - lastTime));
     const turnAlpha = 1 - Math.exp(-10 * deltaTime);
     lastTime = time;
@@ -374,7 +374,7 @@ function buildObstacles(terrain, obstacles, renderer) {
         o.z,
       );
     }
-    for (const mesh of otterMeshes) updateOtterMesh(mesh, time, riderPosition);
+    for (const mesh of otterMeshes) updateOtterMesh(mesh, time);
   };
   group.userData.createWaveOtter = () => {
     if (!otterTemplate) return null;
@@ -382,8 +382,8 @@ function buildObstacles(terrain, obstacles, renderer) {
     prepareOtterMesh(mesh, renderer, stickerMaterial);
     return mesh;
   };
-  group.userData.updateWaveOtter = (mesh, time, riderPosition, wave) => {
-    updateOtterMesh(mesh, time, riderPosition, wave);
+  group.userData.updateWaveOtter = (mesh, time, wave) => {
+    updateOtterMesh(mesh, time, wave);
   };
   group.userData.disposeWaveOtter = (mesh) => disposeOtterMesh(mesh);
   return group;
@@ -520,14 +520,14 @@ export function buildWorld(scene, renderer, terrain, obstacles) {
     createWaveOtter() {
       return obstacleGroup.userData.createWaveOtter();
     },
-    updateWaveOtter(mesh, time, riderPosition, wave) {
-      obstacleGroup.userData.updateWaveOtter(mesh, time, riderPosition, wave);
+    updateWaveOtter(mesh, time, wave) {
+      obstacleGroup.userData.updateWaveOtter(mesh, time, wave);
     },
     disposeWaveOtter(mesh) {
       obstacleGroup.userData.disposeWaveOtter(mesh);
     },
-    update(time, riderPosition) {
-      obstacleGroup.userData.update(time, riderPosition);
+    update(time) {
+      obstacleGroup.userData.update(time);
     },
   };
 }
