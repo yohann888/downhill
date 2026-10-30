@@ -43,6 +43,31 @@ function obstacleClearanceFromEdge(obstacle, terrain) {
   );
 }
 
+function distanceToObstacle(point, obstacle) {
+  if (obstacle.type !== 'log') {
+    return Math.hypot(point.x - obstacle.x, point.z - obstacle.z);
+  }
+
+  const dx = obstacle.x2 - obstacle.x1;
+  const dz = obstacle.z2 - obstacle.z1;
+  const lengthSquared = dx * dx + dz * dz;
+  const t =
+    lengthSquared === 0
+      ? 0
+      : Math.max(
+          0,
+          Math.min(
+            1,
+            ((point.x - obstacle.x1) * dx + (point.z - obstacle.z1) * dz) /
+              lengthSquared,
+          ),
+        );
+  return Math.hypot(
+    point.x - (obstacle.x1 + t * dx),
+    point.z - (obstacle.z1 + t * dz),
+  );
+}
+
 describe('terrain and obstacle generation', () => {
   it('is deterministic for identical scripted runs', () => {
     expect(scriptedRun(17)).toEqual(scriptedRun(17));
@@ -90,6 +115,29 @@ describe('terrain and obstacle generation', () => {
       expect(obstacleClearanceFromEdge(obstacle, terrain)).toBeGreaterThanOrEqual(
         1.6 - 1e-9,
       );
+      if (obstacle.type === 'rock') {
+        const width = terrain.halfWidth(obstacle.z);
+        const offset = Math.abs(obstacle.x - terrain.centerX(obstacle.z));
+        expect(obstacle.r).toBeGreaterThanOrEqual(0.6 - 1e-9);
+        expect(obstacle.r).toBeLessThanOrEqual(1.35 + 1e-9);
+        expect(obstacle.h).toBeGreaterThanOrEqual(0.6 - 1e-9);
+        expect(obstacle.h).toBeLessThanOrEqual(1.35 + 1e-9);
+        expect(width - offset - obstacle.r).toBeGreaterThanOrEqual(0.1 - 1e-9);
+      }
+    }
+
+    for (const seed of [5, 9, 17]) {
+      const seededTerrain = createTerrain(seed);
+      const seededObstacles = createObstacles(seededTerrain, seed + 20);
+      const rocks = seededObstacles.filter((obstacle) => obstacle.type === 'rock');
+      for (const rock of rocks) {
+        for (const other of seededObstacles) {
+          if (other === rock) continue;
+          expect(distanceToObstacle(rock, other)).toBeGreaterThanOrEqual(
+            rock.r + other.r - 1e-9,
+          );
+        }
+      }
     }
 
     for (const tree of obstacles.filter((obstacle) => obstacle.type === 'tree')) {

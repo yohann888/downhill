@@ -232,7 +232,7 @@ describe('bike physics', () => {
 
   it('crashes at speed on a rock, pushes a slow bike clear, and can jump a log', () => {
     const terrain = createPlaneTerrain();
-    const rock = { type: 'rock', x: 0, z: -1, r: 0.7, h: 0.6, rot: 0 };
+    const rock = { type: 'rock', x: 0, z: -1, r: 1.05, h: 0.9, rot: 0 };
     const fast = createBike({ x: 0, z: 0 }, terrain);
     fast.v = 8;
     for (let elapsed = 0; elapsed < 1 && !fast.crashed; elapsed += DT) {
