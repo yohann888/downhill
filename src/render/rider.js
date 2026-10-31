@@ -274,6 +274,8 @@ export function createRiderModel() {
   fallbackRiderMotion.add(fallbackRider);
   let fallbackWaveArm;
   let fallbackWaveForeArm;
+  let fallbackWaveHand;
+  let fallbackWaveChain;
   const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.17, 0.42, 4, 10), jerseyMat);
   torso.position.set(0, 1.32, 0.02);
   torso.rotation.x = -1.0;
@@ -292,12 +294,19 @@ export function createRiderModel() {
       fallbackWaveArm.add(bar(jerseyMat, [0, 0, 0], [0.08, -0.2, 0.08], 0.05));
       fallbackWaveArm.add(fallbackWaveForeArm);
       fallbackWaveForeArm.add(bar(jerseyMat, [0, 0, 0], [0.08, -0.19, 0.1], 0.045));
+      fallbackWaveHand = new THREE.Group();
+      fallbackWaveHand.position.set(0.08, -0.19, 0.1);
+      fallbackWaveForeArm.add(fallbackWaveHand);
+      const fallbackPalm = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.07, 0.035), helmetMat);
+      fallbackPalm.position.set(0.02, 0, 0.02);
+      fallbackWaveHand.add(fallbackPalm);
     } else {
       fallbackRider.add(bar(jerseyMat, [side * 0.18, 1.45, -0.12], [side * 0.34, 1.06, 0.06], 0.05));
     }
     fallbackRider.add(bar(pantsMat, [side * 0.12, 1.12, 0.22], [side * 0.14, 0.72, -0.08], 0.07));
     fallbackRider.add(bar(pantsMat, [side * 0.14, 0.72, -0.08], [side * 0.11, 0.36, 0.05], 0.055));
   }
+  fallbackWaveChain = makeChain(fallbackWaveArm, fallbackWaveForeArm, fallbackWaveHand);
   const fallbackRiderCorners = boxCorners(new THREE.Box3().setFromObject(fallbackRider));
   markShadowMeshes(procedural);
 
@@ -748,31 +757,43 @@ export function createRiderModel() {
         : assetRiderMotion.worldToLocal(
           assetSteer.localToWorld(new THREE.Vector3(side * 0.215, 0.665, 0.385)),
         );
-      const smoothedGrip = stepVectorSpring(handTargets[index], gripLocal, dt, crashing ? 8 : 16);
+      const waving = wavePoseActive && side > 0 && !crashing;
+      const shoulderLocal = waving
+        ? assetRiderMotion.worldToLocal(boneWorldPosition(riderBones.rightShoulder))
+        : null;
+      const waveTargetLocal = waving
+        ? shoulderLocal.clone().add(new THREE.Vector3(
+          side * 0.30 + Math.sin(wavePoseTime * Math.PI * 4) * 0.12,
+          0.50,
+          0.20,
+        ))
+        : gripLocal;
+      const smoothedGrip = waving
+        ? waveTargetLocal
+        : stepVectorSpring(handTargets[index], gripLocal, dt, crashing ? 8 : 16);
+      if (waving) {
+        handTargets[index].x.value = waveTargetLocal.x;
+        handTargets[index].x.velocity = 0;
+        handTargets[index].y.value = waveTargetLocal.y;
+        handTargets[index].y.velocity = 0;
+        handTargets[index].z.value = waveTargetLocal.z;
+        handTargets[index].z.velocity = 0;
+      }
       const handTarget = assetRiderMotion.localToWorld(smoothedGrip);
       const elbowPole = assetRiderMotion.localToWorld(
-        crashing
-          ? new THREE.Vector3(side * 0.58, 0.9, 0.25)
-          : new THREE.Vector3(side * 0.38, 0.85, 0.22),
+        waving
+          ? shoulderLocal.clone().add(new THREE.Vector3(side * 0.55, 0.15, 0.35))
+          : crashing
+            ? new THREE.Vector3(side * 0.58, 0.9, 0.25)
+            : new THREE.Vector3(side * 0.38, 0.85, 0.22),
       );
       solveTwoBone(root, handChains[index], handTarget, elbowPole);
+      if (waving) rotateBoneAroundWorldAxis(riderBones.rightHand, forwardWorld, Math.PI / 2);
     }
 
     const headPitch = -(torsoPitch.value + pitchSpring.value);
     rotateBoneAroundWorldAxis(riderBones.head, lateralWorld, headPitch);
     rotateBoneAroundWorldAxis(riderBones.head, forwardWorld, 1.3 * bike.lean);
-    if (wavePoseActive && riderBones.rightArm && riderBones.rightForeArm && riderBones.rightHand) {
-      const wave = Math.sin(wavePoseTime * Math.PI * 4) * THREE.MathUtils.degToRad(25);
-      riderBones.rightArm.quaternion
-        .copy(bindBones.get(riderBones.rightArm).quaternion)
-        .multiply(new THREE.Quaternion().setFromEuler(
-          new THREE.Euler(0, 0, -THREE.MathUtils.degToRad(150)),
-        ));
-      riderBones.rightForeArm.quaternion
-        .copy(bindBones.get(riderBones.rightForeArm).quaternion)
-        .multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, wave)));
-      riderBones.rightHand.quaternion.copy(bindBones.get(riderBones.rightHand).quaternion);
-    }
     root.updateMatrixWorld(true);
     if (backPrintMesh && riderBones.spine2) {
       const riderRotation = riderRoot.getWorldQuaternion(new THREE.Quaternion());
@@ -794,11 +815,6 @@ export function createRiderModel() {
     setWavePose(active, time) {
       wavePoseActive = active;
       wavePoseTime = time;
-      if (fallbackWaveArm && fallbackWaveForeArm) {
-        const wave = Math.sin(time * Math.PI * 4) * THREE.MathUtils.degToRad(25);
-        fallbackWaveArm.rotation.z = active ? THREE.MathUtils.degToRad(150) : 0;
-        fallbackWaveForeArm.rotation.z = active ? wave : 0;
-      }
     },
     startCrash,
     resetCrash,
@@ -856,6 +872,21 @@ export function createRiderModel() {
         }
       }
       root.updateMatrixWorld(true);
+      if (!assetHolder.visible && !crashState && wavePoseActive && fallbackWaveChain) {
+        const shoulderLocal = new THREE.Vector3(0.18, 1.45, -0.12);
+        const waveTargetLocal = shoulderLocal.clone().add(new THREE.Vector3(
+          0.30 + Math.sin(wavePoseTime * Math.PI * 4) * 0.12,
+          0.50,
+          -0.20,
+        ));
+        const elbowPoleLocal = shoulderLocal.clone().add(new THREE.Vector3(0.55, 0.15, -0.35));
+        const target = fallbackRider.localToWorld(waveTargetLocal);
+        const pole = fallbackRider.localToWorld(elbowPoleLocal);
+        solveTwoBone(root, fallbackWaveChain, target, pole);
+        const forwardWorld = new THREE.Vector3(0, 0, -1).transformDirection(fallbackRider.matrixWorld);
+        rotateBoneAroundWorldAxis(fallbackWaveHand, forwardWorld, Math.PI / 2);
+        root.updateMatrixWorld(true);
+      }
     },
   };
 }
