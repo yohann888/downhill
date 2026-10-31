@@ -82,6 +82,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #000; font-f
 #audio-controls #time-toggle.is-night .icon-night,
 #audio-controls #music-select .hud-icon svg { display: block; }
 #volume-label { position: absolute; right: 16px; top: 110px; display: flex; align-items: center; gap: 8px; pointer-events: auto; font-size: 12px; text-shadow: 0 1px 4px rgba(0,0,0,.6); }
+@media (pointer: coarse) { #volume-label { display: none; } }
 #volume { width: 104px; accent-color: #ffb547; cursor: pointer; }
 @font-face { font-family: 'Bungee'; src: url('./fonts/bungee.woff2') format('woff2'); font-display: swap; }
 @font-face { font-family: 'Press Start 2P'; src: url('./fonts/press-start-2p.woff2') format('woff2'); font-display: swap; }
