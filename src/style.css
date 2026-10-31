@@ -7,6 +7,11 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #000; font-f
 .stat span { font-size: 30px; font-weight: 700; }
 .stat small { margin-left: 4px; font-size: 13px; opacity: .8; }
 .hud-top .stat:last-child { text-align: right; }
+#pickup-timers { position: absolute; top: 96px; left: 16px; display: flex; gap: 12px; pointer-events: none; text-shadow: 0 1px 5px #000; }
+.pickup-timer { font-family: 'Bungee', sans-serif; font-size: 12px; white-space: nowrap; }
+.pickup-timer[hidden] { display: none; }
+.coffee-timer { color: #ffd05d; }
+.energy-timer { color: #42edff; }
 .timer-stat { min-width: 92px; text-align: right; }
 #ghost-status { font-size: 11px; opacity: .9; white-space: nowrap; text-shadow: 0 1px 4px rgba(0,0,0,.6); }
 .progress-wrap { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; }
@@ -37,6 +42,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #000; font-f
 .leaderboard th { opacity: .7; font-size: 12px; }
 .leaderboard .player-row { color: #ffcf7f; font-weight: 700; }
 #hud.wave-mode .hud-top { display: none; }
+#hud.wave-mode #pickup-timers { display: none; }
 #wave-panel { position: fixed; z-index: 4; top: 14px; left: 14px; width: min(278px, calc(100vw - 28px)); max-height: calc(100vh - 28px); overflow: auto; padding: 10px 12px; border: 1px solid rgba(255,255,255,.35); border-radius: 10px; background: rgba(8,12,16,.68); backdrop-filter: blur(7px); pointer-events: auto; }
 #wave-panel[hidden] { display: none; }
 #wave-panel h2 { margin: 0; font-size: 16px; }
@@ -56,6 +62,10 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #000; font-f
   #touch button { width: 62px; height: 52px; }
   #touch button[data-key="left"], #touch button[data-key="right"] { width: 52px; }
 }
+@media (max-width: 600px) {
+  #pickup-timers { top: 96px; left: 12px; gap: 8px; }
+  .pickup-timer { font-size: 10px; }
+}
 #audio-controls { position: absolute; right: 16px; top: 58px; display: flex; gap: 6px; pointer-events: auto; }
 #audio-controls button { font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,.4); background: rgba(0,0,0,.25); color: #fff; cursor: pointer; }
 #volume-label { position: absolute; right: 16px; top: 92px; display: flex; align-items: center; gap: 8px; pointer-events: auto; font-size: 12px; text-shadow: 0 1px 4px rgba(0,0,0,.6); }
@@ -69,8 +79,8 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #000; font-f
 #overlay.start #start-menu, #overlay.start .arcade-credit { display: block; }
 #overlay.start #overlay-title, #overlay.start #overlay-body { display: none; }
 #overlay.start .panel { touch-action: pan-y; position: relative; z-index: 1; width: min(800px, 96vw); padding: 34px 24px 14px; background: none; overflow: visible; }
-body:has(#overlay.start:not(.hidden)) .hud-top, body:has(#overlay.start:not(.hidden)) #touch, body:has(#overlay.start:not(.hidden)) #volume-label, body:has(#overlay.start:not(.hidden)) #brand-badge { visibility: hidden; }
-.arcade-presents { margin: 0 0 2px !important; font: 10px/1.6 'Press Start 2P', monospace; letter-spacing: .12em; text-transform: uppercase; color: #22e8ff; text-shadow: 0 0 8px #22e8ff; opacity: 1 !important; }
+body:has(#overlay.start:not(.hidden)) .hud-top, body:has(#overlay.start:not(.hidden)) #pickup-timers, body:has(#overlay.start:not(.hidden)) #touch, body:has(#overlay.start:not(.hidden)) #volume-label, body:has(#overlay.start:not(.hidden)) #brand-badge { visibility: hidden; }
+.arcade-presents { margin: 0 0 2px !important; font: 10px/1.6 'Press Start 2P', monospace; letter-spacing: .12em; text-transform: none; color: #22e8ff; text-shadow: 0 0 8px #22e8ff; opacity: 1 !important; }
 .arcade-logo { position: relative; display: inline-block; animation: arcade-bob 3.2s ease-in-out infinite; }
 .arcade-logo::before { content: 'DOWNHILL'; position: absolute; left: 0; top: 0; z-index: 0; font: clamp(34px, 10vw, 104px)/1 'Bungee', Impact, sans-serif; letter-spacing: .02em; transform: skewX(-8deg); color: #1a0638; -webkit-text-stroke: 3px #1a0638; text-shadow: 2px 2px 0 #5b1cff, 4px 4px 0 #5b1cff, 6px 6px 0 #4314c4, 8px 8px 0 #2d0c8c, 10px 10px 0 #1a0638, 12px 14px 18px rgba(0,0,0,.6); }
 .arcade-title { position: relative; z-index: 1; margin: 0 !important; font: clamp(34px, 10vw, 104px)/1 'Bungee', Impact, sans-serif !important; letter-spacing: .02em !important; transform: skewX(-8deg); background: linear-gradient(180deg, #fffbe0 0%, #ffe14a 26%, #ff9a1f 50%, #ff2bd6 51%, #ff5ae0 74%, #ffd0f6 100%); -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-stroke: 2px #1a0638; filter: drop-shadow(0 0 16px rgba(255,43,214,.5)); }
@@ -104,6 +114,10 @@ kbd { display: inline-block; min-width: 24px; padding: 3px 6px 2px; border: 2px 
 #wave-panel .wave-actions { display: flex; gap: 6px; }
 #wave-panel .wave-actions button { flex: 1; min-width: 0; width: auto; margin: 0; padding: 6px 4px; }
 .arcade-credit { margin: 16px 0 0 !important; font: 8px/1.6 'Press Start 2P', monospace; letter-spacing: .1em; text-transform: uppercase; color: #b9a6ff; opacity: .9 !important; }
+.production-credits { width: min(760px, 88vw); margin: 6px auto 0 !important; font: 8px/1.8 'Press Start 2P', monospace; color: #dceaff; overflow-wrap: anywhere; text-align: center; }
+.production-credits a { color: #22e8ff; text-decoration: none; }
+.production-credits a:hover { color: #ffe14a; text-decoration: underline; }
+@media (max-width: 600px) { .production-credits { font-size: 7px; } }
 @keyframes arcade-spin { to { transform: rotate(360deg); } }
 @keyframes arcade-bob { 50% { transform: translateY(-6px); } }
 @keyframes arcade-shine { 0%, 30% { background-position: 150% 0; } 70%, 100% { background-position: -50% 0; } }

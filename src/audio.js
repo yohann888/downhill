@@ -121,6 +121,26 @@ export function createAudio() {
     source.start();
   }
 
+  function playPickup(type) {
+    if (!ctx || !master) return;
+    const frequencies =
+      type === 'coffee' ? [660, 990] : [440, 660, 880, 1320];
+    const spacing = type === 'coffee' ? 0.11 : 0.065;
+    frequencies.forEach((frequency, index) => {
+      const oscillator = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const start = ctx.currentTime + index * spacing;
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(frequency, start);
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(0.16, start + 0.018);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.1);
+      oscillator.connect(gain).connect(master);
+      oscillator.start(start);
+      oscillator.stop(start + 0.11);
+    });
+  }
+
   async function playCommentary(base64) {
     if (!ctx || !master || !base64) return false;
     let source = null;
@@ -227,6 +247,7 @@ export function createAudio() {
     },
     event(name, value) {
       if (!ctx) return;
+      if (name === 'pickup') playPickup(value);
       if (name === 'start') playVoice('vo-go');
       if (name === 'checkpoint') {
         play('checkpoint', 0.5);

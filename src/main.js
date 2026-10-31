@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js';
-import { createBike, stepBike } from './physics/bike.js';
+import { applyPickup, createBike, stepBike } from './physics/bike.js';
 import { DT } from './physics/constants.js';
 import { createObstacles, updateMovingObstacles } from './world/obstacles.js';
 import { createTerrain } from './world/terrain.js';
+import { createPickups, PICKUP_RADIUS, PICKUP_REACH } from './world/pickups.js';
 import { buildWorld } from './render/world.js';
 import { createRiderModel } from './render/rider.js';
 import { createDust } from './render/dust.js';
@@ -51,7 +52,8 @@ const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerH
 
 const terrain = createTerrain();
 const obstacles = createObstacles(terrain);
-const world = buildWorld(scene, renderer, terrain, obstacles);
+const pickups = createPickups(terrain, obstacles);
+const world = buildWorld(scene, renderer, terrain, obstacles, pickups);
 const post = queryParams.has('nopost')
   ? { render: () => renderer.render(scene, camera), setSize() {} }
   : createPost(renderer, scene, camera);
@@ -71,6 +73,8 @@ const audio = createAudio();
 const ui = {
   speed: document.getElementById('speed'),
   timer: document.getElementById('timer'),
+  coffeeTimer: document.getElementById('coffee-timer'),
+  energyTimer: document.getElementById('energy-timer'),
   progress: document.getElementById('progress-fill'),
   progressPercent: document.getElementById('progress-percent'),
   checkpointMarks: document.getElementById('checkpoint-marks'),
@@ -247,6 +251,7 @@ const game = {
   maxSpeed: 0,
   airTime: 0,
   airPeak: 0,
+  airDoubleJumped: false,
   maxAir: 0,
   maxHeight: 0,
   crashes: 0,
@@ -277,6 +282,22 @@ function placeBike(x, z, heading, speed) {
   game.prev = snapshot(game.bike);
 }
 
+function resetPickups() {
+  pickups.forEach((pickup, index) => {
+    pickup.taken = false;
+    world.setPickupVisible(index, true);
+  });
+}
+
+function clearPowerUps(bike = game.bike) {
+  if (!bike) return;
+  bike.boostTime = 0;
+  bike.boostTarget = 0;
+  bike.doubleJumpTime = 0;
+  bike.doubleJumpUsed = false;
+  bike.doubleJumped = false;
+}
+
 function startPose() {
   const z = -6;
   const heading = Math.atan2(terrain.centerX(z - 0.5) - terrain.centerX(z + 0.5), 1);
@@ -288,10 +309,13 @@ function start() {
   audio.unlock().then(() => audio.event('start'));
   const p = startPose();
   placeBike(p.x, p.z, p.heading, 0);
+  resetPickups();
+  clearPowerUps();
   game.mode = 'riding';
   game.time = 0;
   game.airTime = 0;
   game.airPeak = 0;
+  game.airDoubleJumped = false;
   updateMovingObstacles(obstacles, 0);
   world.update(0);
   game.penalty = 0;
@@ -328,7 +352,10 @@ function respawn(manual) {
   if (manual && game.mode === 'riding') game.penalty += CRASH_PENALTY;
   const cp = terrain.checkpoints[game.checkpoint];
   const p = cp ? { x: cp.x, z: cp.z, heading: cp.heading } : startPose();
+  const doubleJumpTime = game.bike?.doubleJumpTime ?? 0;
   placeBike(p.x, p.z, p.heading, cp ? 5 : 0);
+  game.bike.doubleJumpTime = doubleJumpTime;
+  game.airDoubleJumped = false;
   model.resetCrash();
   game.airTime = 0;
   game.airPeak = 0;
@@ -543,6 +570,25 @@ function simulate(input) {
   const wasAir = b.airborne;
   updateMovingObstacles(obstacles, game.time);
   stepBike(b, input, terrain, obstacles, DT);
+  if (b.airborne && b.doubleJumped) game.airDoubleJumped = true;
+  if (!b.crashed) {
+    pickups.forEach((pickup, index) => {
+      if (
+        pickup.taken ||
+        Math.hypot(b.x - pickup.x, b.z - pickup.z) >= PICKUP_RADIUS ||
+        b.y - terrain.heightAt(pickup.x, pickup.z) >= PICKUP_REACH
+      ) {
+        return;
+      }
+      applyPickup(b, pickup.type);
+      pickup.taken = true;
+      world.setPickupVisible(index, false);
+      flash(
+        pickup.type === 'coffee' ? 'Coffee! 2x speed' : 'Energy drink! Double jump',
+      );
+      audio.event('pickup', pickup.type);
+    });
+  }
   if (b.foliageHit) dust.leafBurst(b.foliageHit);
   game.time += DT;
   if (!game.leaderboardWarmed && -b.z / terrain.courseLength >= 0.8) {
@@ -570,7 +616,7 @@ function simulate(input) {
   }
   if (wasAir && !b.airborne && !b.crashed) {
     audio.event('land');
-    const air = airTimeBonus(game.airTime);
+    const air = game.airDoubleJumped ? 0 : airTimeBonus(game.airTime);
     const height = heightBonus(game.airPeak);
     const bonus = Math.round((air + height) * 10) / 10;
     game.bonus = Math.round((game.bonus + bonus) * 10) / 10;
@@ -586,6 +632,7 @@ function simulate(input) {
   if (!b.airborne) {
     game.airTime = 0;
     game.airPeak = 0;
+    game.airDoubleJumped = false;
   }
   game.maxSpeed = Math.max(game.maxSpeed, b.v);
   const s = -b.z;
@@ -721,6 +768,8 @@ function showMenu() {
   const p = startPose();
   game.mode = 'ready';
   placeBike(p.x, p.z, p.heading, 0);
+  resetPickups();
+  clearPowerUps();
   game.time = 0;
   game.penalty = 0;
   game.bonus = 0;
@@ -729,6 +778,7 @@ function showMenu() {
   game.maxSpeed = 0;
   game.airTime = 0;
   game.airPeak = 0;
+  game.airDoubleJumped = false;
   game.maxAir = 0;
   game.maxHeight = 0;
   game.crashes = 0;
@@ -865,6 +915,12 @@ function tintGhost() {
 function updateHud() {
   const b = game.bike;
   touchControls.hidden = game.mode !== 'riding';
+  ui.coffeeTimer.hidden = !(b.boostTime > 0);
+  if (b.boostTime > 0) ui.coffeeTimer.textContent = `☕ 2x ${b.boostTime.toFixed(1)}`;
+  ui.energyTimer.hidden = !(b.doubleJumpTime > 0);
+  if (b.doubleJumpTime > 0) {
+    ui.energyTimer.textContent = `⚡ Double jump ${b.doubleJumpTime.toFixed(1)}`;
+  }
   ui.speed.textContent = String(Math.round(b.v * 3.6));
   ui.timer.textContent = (game.time + game.penalty - game.bonus).toFixed(2);
   const progress = Math.max(0, Math.min(1, -b.z / terrain.courseLength));

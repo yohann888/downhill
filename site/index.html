@@ -51,7 +51,7 @@
   .marquee::before, .marquee::after { content: ''; position: absolute; left: 0; right: 0; height: 6px;
     background: radial-gradient(circle, var(--gold) 0 2px, transparent 2.5px) 0 0 / 18px 6px repeat-x, radial-gradient(circle, rgba(255,225,74,.25) 0 3px, transparent 3.5px) 0 0 / 9px 6px repeat-x; animation: chase .6s steps(2) infinite; }
   .marquee::before { top: 4px; } .marquee::after { bottom: 4px; animation-direction: reverse; }
-  .presents { font: 9px/1.6 var(--pix); letter-spacing: .14em; color: var(--cyan); text-shadow: 0 0 8px var(--cyan); text-transform: uppercase; writing-mode: horizontal-tb; }
+  .presents { font: 9px/1.6 var(--pix); letter-spacing: .14em; color: var(--cyan); text-shadow: 0 0 8px var(--cyan); text-transform: none; writing-mode: horizontal-tb; }
   .logo { position: relative; margin: 0; font: 54px/1 'Bungee', Impact, sans-serif; letter-spacing: .02em; transform: skewX(-8deg); }
   .logo .fill, .logo::before, .logo::after { display: block; }
   .logo::before { content: 'DOWNHILL'; position: absolute; inset: 0; color: var(--ink); -webkit-text-stroke: 3px var(--ink); text-shadow: 2px 2px 0 #5b1cff, 4px 4px 0 #5b1cff, 6px 6px 0 #2d0c8c, 8px 9px 12px rgba(0,0,0,.6); }
@@ -70,6 +70,9 @@
   .badge img.otter { width: 40px; height: 40px; object-fit: contain; animation: bob 3s ease-in-out infinite; }
   .badge span { font: 9px/1.6 var(--pix); text-transform: uppercase; }
   .badge img.logo-devin { height: 20px; }
+  .creator-credits { flex: 1 1 300px; max-width: 520px; font: 7px/1.8 var(--pix); color: #dceaff; text-align: center; overflow-wrap: anywhere; }
+  .creator-credits a { color: var(--cyan); text-decoration: none; }
+  .creator-credits a:hover { color: var(--gold); text-decoration: underline; }
   .btn { display: inline-flex; align-items: center; gap: 10px; background: none; border: 0; padding: 0; cursor: pointer; color: #fff; font: 9px/1.6 var(--pix); text-transform: uppercase; }
   .btn i { width: 34px; height: 34px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #ff9ae9, var(--pink) 55%, #9a0a7c); box-shadow: 0 4px 0 #5a0448, 0 0 14px rgba(255,43,214,.6); transition: transform .1s, box-shadow .1s; }
   .btn:active i { transform: translateY(3px); box-shadow: 0 1px 0 #5a0448; }
@@ -81,7 +84,7 @@
     .cabinet { --w: calc(100vw - 52px); width: 100%; flex: 1; display: flex; flex-direction: column; }
     .marquee { height: 64px; gap: 10px; } .presents, .tag, .coin { display: none; } .logo { font-size: 36px; }
     .bezel { flex: 1; display: flex; margin: 10px 0; padding: 6px; } .frame { flex: 1; aspect-ratio: auto; width: 100%; }
-    .panel { justify-content: center; } #fs { display: none; } .credit { display: none; }
+    .panel { justify-content: center; flex-wrap: wrap; } .creator-credits { flex: 1 1 100%; max-width: none; font-size: 6px; } #fs { display: none; } .credit { display: none; }
   }
 </style>
 </head>
@@ -99,7 +102,7 @@
 <main>
   <div class="cabinet">
     <header class="marquee">
-      <span class="presents">Aloomii<br>presents</span>
+      <span class="presents">devkick<br>presents</span>
       <h1 class="logo"><span class="fill">DOWNHILL</span></h1>
       <span class="tag">Mountain bike mayhem</span>
     </header>
@@ -115,6 +118,7 @@
         <span>Built with</span>
         <img class="logo-devin" src="devin-logo.svg" alt="Devin">
       </a>
+      <span class="creator-credits">3D models by <a href="https://www.meshy.ai" target="_blank" rel="noopener">Meshy</a> &middot; Music, sound and voice by <a href="https://elevenlabs.io" target="_blank" rel="noopener">ElevenLabs</a> &middot; Rider and sky by <a href="https://rosebud.ai" target="_blank" rel="noopener">Rosebud AI</a> &middot; Leaderboard and AI commentary on <a href="https://modal.com" target="_blank" rel="noopener">Modal</a></span>
       <button id="fs" class="btn" type="button"><i></i>Fullscreen</button>
     </footer>
   </div>
