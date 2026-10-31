@@ -199,7 +199,10 @@ window.addEventListener('keydown', (e) => {
     return;
   }
   if (!ui.leaderboardOverlay.hidden) {
-    if (e.code === 'Enter' || e.code === 'Space') e.preventDefault();
+    if (e.code === 'Enter' || e.code === 'Space') {
+      if (ui.leaderboardOverlay.contains(document.activeElement)) return;
+      e.preventDefault();
+    }
     return;
   }
   if (e.code === 'KeyN' && !e.repeat) {
