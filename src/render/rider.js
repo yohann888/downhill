@@ -276,6 +276,7 @@ export function createRiderModel() {
   let fallbackWaveForeArm;
   let fallbackWaveHand;
   let fallbackWaveChain;
+  let fallbackWaveRestPose;
   const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.17, 0.42, 4, 10), jerseyMat);
   torso.position.set(0, 1.32, 0.02);
   torso.rotation.x = -1.0;
@@ -307,6 +308,11 @@ export function createRiderModel() {
     fallbackRider.add(bar(pantsMat, [side * 0.14, 0.72, -0.08], [side * 0.11, 0.36, 0.05], 0.055));
   }
   fallbackWaveChain = makeChain(fallbackWaveArm, fallbackWaveForeArm, fallbackWaveHand);
+  fallbackWaveRestPose = {
+    arm: fallbackWaveArm.quaternion.clone(),
+    foreArm: fallbackWaveForeArm.quaternion.clone(),
+    hand: fallbackWaveHand.quaternion.clone(),
+  };
   const fallbackRiderCorners = boxCorners(new THREE.Box3().setFromObject(fallbackRider));
   markShadowMeshes(procedural);
 
@@ -871,6 +877,9 @@ export function createRiderModel() {
           fallbackCrank.rotation.x = cadenceSpring.value;
         }
       }
+      fallbackWaveArm.quaternion.copy(fallbackWaveRestPose.arm);
+      fallbackWaveForeArm.quaternion.copy(fallbackWaveRestPose.foreArm);
+      fallbackWaveHand.quaternion.copy(fallbackWaveRestPose.hand);
       root.updateMatrixWorld(true);
       if (!assetHolder.visible && !crashState && wavePoseActive && fallbackWaveChain) {
         const shoulderLocal = new THREE.Vector3(0.18, 1.45, -0.12);
