@@ -786,10 +786,10 @@ export function createRiderModel() {
         ? waveOriginWorld.clone()
           .addScaledVector(
             waveSideWorld,
-            waveLength * (0.45 + Math.sin(wavePoseTime * Math.PI * 4) * 0.10),
+            waveLength * (0.35 + Math.sin(wavePoseTime * Math.PI * 4) * 0.10),
           )
-          .addScaledVector(waveUpWorld, waveLength * 0.35)
-          .addScaledVector(waveForwardWorld, waveLength * 0.10)
+          .addScaledVector(waveUpWorld, waveLength * 0.45)
+          .addScaledVector(waveForwardWorld, waveLength * 0.15)
         : gripLocal;
       const waveTargetLocal = waving
         ? assetRiderMotion.worldToLocal(waveTargetWorld.clone())
