@@ -22,6 +22,8 @@ import { getCommentary, getLeaderboard, postRun } from './api.js';
 import { buildRankOverlayRows, cleanText, rivalLine } from './leaderboard.js';
 import { createRecorder, sampleGhost } from './ghost.js';
 import { getEditableKeyboardTarget } from './keyboard.js';
+import { savePhoto } from './photo.js';
+import { APP_VERSION_LABEL } from './app-version.js';
 import {
   loadRiderPreference,
   RIDER_OPTIONS,
@@ -87,6 +89,7 @@ const backPrintPromise = new THREE.TextureLoader().loadAsync('./assets/otter-bac
 const ui = {
   speed: document.getElementById('speed'),
   timer: document.getElementById('timer'),
+  photoFlash: document.getElementById('photo-flash'),
   coffeeTimer: document.getElementById('coffee-timer'),
   energyTimer: document.getElementById('energy-timer'),
   progress: document.getElementById('progress-fill'),
@@ -124,8 +127,17 @@ const ui = {
   mute: document.getElementById('mute'),
   music: document.getElementById('music-select'),
   timeToggle: document.getElementById('time-toggle'),
+  pause: document.getElementById('pause-button'),
+  pauseOverlay: document.getElementById('pause-overlay'),
+  pauseResume: document.getElementById('pause-resume'),
+  pauseRestart: document.getElementById('pause-restart'),
+  pauseMenu: document.getElementById('pause-menu'),
+  photo: document.getElementById('photo-button'),
   volume: document.getElementById('volume'),
 };
+for (const element of document.querySelectorAll('.app-version')) {
+  element.textContent = APP_VERSION_LABEL;
+}
 function syncMuteButton() {
   const muted = audio.muted;
   ui.mute.classList.toggle('is-muted', muted);
@@ -141,7 +153,12 @@ function syncHudButton(button, label) {
   button.setAttribute('aria-label', label);
   button.title = label;
 }
+function syncPauseButton(paused = false) {
+  syncHudButton(ui.pause, paused ? 'Resume (P)' : 'Pause (P)');
+}
 syncMuteButton();
+syncPauseButton();
+syncHudButton(ui.photo, 'Photo (C)');
 const menuMusic = document.getElementById('menu-music');
 const youtubeControls = document.getElementById('youtube-music-controls');
 const youtubeLink = document.getElementById('youtube-link');
@@ -154,6 +171,7 @@ let youtubeApiPromise = null;
 let youtubeReadyPromise = null;
 let youtubePlayerReady = false;
 let youtubeRequested = false;
+let pausedYouTubeWasPlaying = false;
 let youtubeErrorActive = false;
 
 function loadYouTubeApi() {
@@ -397,6 +415,15 @@ ui.timeToggle.addEventListener('click', () => {
   setTimeMode(timeMode === 'night' ? 'day' : 'night');
   ui.timeToggle.blur();
 });
+ui.photo.addEventListener('click', () => {
+  void takePhoto();
+  ui.photo.blur();
+});
+ui.pause.addEventListener('click', () => {
+  if (game.mode === 'riding') pauseGame();
+  else if (game.mode === 'paused') resumeGame();
+  ui.pause.blur();
+});
 setTimeMode(timeMode, false);
 ui.volume.value = String(audio.volume);
 ui.volume.addEventListener('input', () => {
@@ -428,9 +455,28 @@ window.addEventListener('keydown', (e) => {
     }
     return;
   }
+  if (
+    (e.code === 'KeyF' || e.code === 'KeyC' || e.code === 'KeyP')
+    && (e.ctrlKey || e.metaKey || e.altKey)
+  ) return;
+  if (
+    game.mode === 'paused'
+    && ui.pauseOverlay.contains(e.target)
+    && (e.code === 'Enter' || e.code === 'Space')
+  ) return;
   if (e.code === 'Escape' && !ui.leaderboardOverlay.hidden) {
     e.preventDefault();
     closeLeaderboard();
+    return;
+  }
+  if (e.code === 'Escape' && game.mode === 'paused') {
+    e.preventDefault();
+    resumeGame();
+    return;
+  }
+  if (e.code === 'Escape' && game.mode === 'riding') {
+    e.preventDefault();
+    pauseGame();
     return;
   }
   if (e.code === 'Escape' && (game.mode === 'finished' || game.waveMode)) {
@@ -459,6 +505,30 @@ window.addEventListener('keydown', (e) => {
     ui.timeToggle.click();
     e.preventDefault();
   }
+  if (e.code === 'KeyP' && !e.repeat) {
+    e.preventDefault();
+    if (game.mode === 'riding') pauseGame();
+    else if (game.mode === 'paused') resumeGame();
+    return;
+  }
+  if (e.code === 'KeyF' && !e.repeat) {
+    e.preventDefault();
+    const fullscreenPromise = document.fullscreenElement
+      ? document.exitFullscreen()
+      : document.documentElement.requestFullscreen?.();
+    fullscreenPromise?.catch(() => {});
+    return;
+  }
+  if (e.code === 'KeyC' && !e.repeat && (game.mode === 'riding' || game.mode === 'paused')) {
+    e.preventDefault();
+    void takePhoto();
+    return;
+  }
+  if (e.code === 'Enter' && game.mode === 'paused') {
+    e.preventDefault();
+    resumeGame();
+    return;
+  }
   if (game.waveMode) {
     if (e.code === 'Enter' || e.code === 'KeyR') start();
     e.preventDefault();
@@ -468,7 +538,7 @@ window.addEventListener('keydown', (e) => {
     setKey(KEYMAP[e.code], true);
     e.preventDefault();
   }
-  if (e.code === 'Space' || e.code === 'KeyJ') {
+  if ((e.code === 'Space' || e.code === 'KeyJ') && game.mode !== 'paused') {
     setKey('jump', true);
     e.preventDefault();
   }
@@ -483,11 +553,14 @@ window.addEventListener('keydown', (e) => {
 });
 window.addEventListener('keyup', (e) => {
   if (KEYMAP[e.code]) setKey(KEYMAP[e.code], false);
-  if (e.code === 'Space' || e.code === 'KeyJ') setKey('jump', false);
+  if ((e.code === 'Space' || e.code === 'KeyJ') && game.mode !== 'paused') setKey('jump', false);
 });
 window.addEventListener('blur', () => {
   for (const k in keys) setKey(k, false);
   jumpQueued = false;
+});
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && game.mode === 'riding') pauseGame();
 });
 for (const button of touchButtons) {
   const key = button.dataset.key;
@@ -501,6 +574,12 @@ for (const button of touchButtons) {
   button.addEventListener('pointerleave', set(false));
 }
 ui.button.addEventListener('click', () => start());
+ui.pauseResume.addEventListener('click', resumeGame);
+ui.pauseRestart.addEventListener('click', () => {
+  resumeGame();
+  start();
+});
+ui.pauseMenu.addEventListener('click', () => showMenu());
 ui.finishForm.addEventListener('submit', (event) => {
   event.preventDefault();
   submitRun();
@@ -520,7 +599,7 @@ const readInput = () => ({
   throttle: keys.throttle ? 1 : 0,
   brake: keys.brake ? 1 : 0,
   steer: (keys.right ? 1 : 0) - (keys.left ? 1 : 0),
-  jump: jumpQueued ? 1 : 0,
+  jump: keys.jump || jumpQueued ? 1 : 0,
 });
 
 const game = {
@@ -635,8 +714,12 @@ function start() {
   ui.hud.classList.remove('wave-mode');
   ui.touch.hidden = false;
   ui.overlay.classList.add('hidden');
+  ui.pauseOverlay.hidden = true;
+  pausedYouTubeWasPlaying = false;
+  syncPauseButton(false);
   syncYouTubeUi();
   snapCamera();
+  schedulePhotoHint();
 }
 
 function respawn(manual) {
@@ -657,12 +740,184 @@ function respawn(manual) {
   snapCamera();
 }
 
+function pauseGame() {
+  if (game.mode !== 'riding') return;
+  const playingState = window.YT?.PlayerState?.PLAYING ?? 1;
+  pausedYouTubeWasPlaying = audio.music.id === 'youtube'
+    && youtubePlayer?.getPlayerState?.() === playingState;
+  if (pausedYouTubeWasPlaying) youtubePlayer?.pauseVideo();
+  if (audio.music.id === 'youtube') audio.setYouTubePlaying(false);
+  for (const key in keys) setKey(key, false);
+  jumpQueued = false;
+  game.mode = 'paused';
+  accumulator = 0;
+  last = performance.now();
+  ui.pauseOverlay.hidden = false;
+  ui.touch.hidden = true;
+  syncPauseButton(true);
+  void audio.suspend();
+  updateHud();
+  ui.pauseResume.focus({ preventScroll: true });
+}
+
+function resumeGame() {
+  if (game.mode !== 'paused') return;
+  game.mode = 'riding';
+  ui.pauseOverlay.hidden = true;
+  ui.touch.hidden = false;
+  syncPauseButton(false);
+  accumulator = 0;
+  last = performance.now();
+  void audio.resume();
+  if (pausedYouTubeWasPlaying) {
+    audio.setYouTubePlaying(true);
+    youtubePlayer?.playVideo();
+  }
+  pausedYouTubeWasPlaying = false;
+  updateHud();
+}
+
 let flashTimeout;
 function flash(text, ms = 1200) {
   ui.flash.textContent = text;
   ui.flash.classList.add('show');
   clearTimeout(flashTimeout);
   flashTimeout = setTimeout(() => ui.flash.classList.remove('show'), ms);
+}
+
+let photoHintTimeout;
+function schedulePhotoHint() {
+  clearTimeout(photoHintTimeout);
+  if (localStorage.getItem('downhill.photo-hint')) return;
+  photoHintTimeout = setTimeout(() => {
+    if (game.mode !== 'riding' && game.mode !== 'paused') return;
+    localStorage.setItem('downhill.photo-hint', 'shown');
+    flash('Press C or tap the camera to snap a photo', 3000);
+  }, 4000);
+}
+
+let photoInProgress = false;
+
+function flashPhoto() {
+  ui.photoFlash.classList.remove('show');
+  void ui.photoFlash.offsetWidth;
+  ui.photoFlash.classList.add('show');
+  setTimeout(() => ui.photoFlash.classList.remove('show'), 150);
+}
+
+function drawRoundedRect(context, x, y, width, height, radius) {
+  context.beginPath();
+  context.moveTo(x + radius, y);
+  context.lineTo(x + width - radius, y);
+  context.quadraticCurveTo(x + width, y, x + width, y + radius);
+  context.lineTo(x + width, y + height - radius);
+  context.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+  context.lineTo(x + radius, y + height);
+  context.quadraticCurveTo(x, y + height, x, y + height - radius);
+  context.lineTo(x, y + radius);
+  context.quadraticCurveTo(x, y, x + radius, y);
+  context.closePath();
+}
+
+async function takePhoto() {
+  if ((game.mode !== 'riding' && game.mode !== 'paused') || photoInProgress) return;
+  photoInProgress = true;
+  try {
+    renderCurrentFrame();
+    const photoCanvas = document.createElement('canvas');
+    photoCanvas.width = renderer.domElement.width;
+    photoCanvas.height = renderer.domElement.height;
+    const context = photoCanvas.getContext('2d');
+    context.drawImage(renderer.domElement, 0, 0);
+    flashPhoto();
+
+    const logo = document.querySelector('#brand-badge .devin-otter');
+    await Promise.all([logo.decode(), document.fonts.load('30px Bungee')]);
+
+    const scaleX = photoCanvas.width / window.innerWidth;
+    const scaleY = photoCanvas.height / window.innerHeight;
+    context.save();
+    context.scale(scaleX, scaleY);
+    context.textBaseline = 'top';
+    context.fillStyle = '#fff';
+    context.shadowColor = 'rgba(255,43,214,.75)';
+    context.shadowBlur = 6;
+    context.shadowOffsetX = 2;
+    context.shadowOffsetY = 2;
+    context.font = '30px Bungee, system-ui, sans-serif';
+    const speed = ui.speed.textContent;
+    context.fillText(speed, 16, 12);
+    const speedWidth = context.measureText(speed).width;
+    context.font = '13px system-ui, sans-serif';
+    context.fillStyle = '#9ff3ff';
+    context.shadowBlur = 0;
+    context.shadowOffsetX = 0;
+    context.shadowOffsetY = 0;
+    context.fillText('km/h', 20 + speedWidth, 25);
+    context.font = '22px Bungee, system-ui, sans-serif';
+    context.fillStyle = '#fff';
+    context.shadowColor = 'rgba(255,43,214,.75)';
+    context.shadowBlur = 6;
+    context.shadowOffsetX = 2;
+    context.shadowOffsetY = 2;
+    context.fillText(`${ui.timer.textContent} s`, 16, 52);
+
+    const watermark = 'Built with Devin · devkick.com/downhill';
+    context.font = '13px Bungee, system-ui, sans-serif';
+    const iconSize = 26;
+    const paddingX = 12;
+    const paddingY = 9;
+    const pillWidth = paddingX * 2 + iconSize + 8 + context.measureText(watermark).width;
+    const pillHeight = iconSize + paddingY * 2;
+    const pillX = window.innerWidth - 16 - pillWidth;
+    const pillY = window.innerHeight - 16 - pillHeight;
+    context.shadowColor = 'rgba(0,0,0,.35)';
+    context.shadowBlur = 12;
+    context.shadowOffsetX = 0;
+    context.shadowOffsetY = 3;
+    drawRoundedRect(context, pillX, pillY, pillWidth, pillHeight, pillHeight / 2);
+    context.fillStyle = 'rgba(8,12,25,.9)';
+    context.fill();
+    context.shadowBlur = 0;
+    context.shadowOffsetY = 0;
+    context.strokeStyle = 'rgba(34,232,255,.8)';
+    context.lineWidth = 1.5;
+    context.stroke();
+    context.save();
+    context.beginPath();
+    context.arc(
+      pillX + paddingX + iconSize / 2,
+      pillY + pillHeight / 2,
+      iconSize / 2,
+      0,
+      Math.PI * 2,
+    );
+    context.clip();
+    context.drawImage(logo, pillX + paddingX, pillY + paddingY, iconSize, iconSize);
+    context.restore();
+    context.fillStyle = '#fff';
+    context.font = '13px Bungee, system-ui, sans-serif';
+    context.textBaseline = 'middle';
+    context.fillText(
+      watermark,
+      pillX + paddingX + iconSize + 8,
+      pillY + pillHeight / 2,
+    );
+    context.restore();
+
+    const blob = await new Promise((resolve, reject) => {
+      photoCanvas.toBlob((result) => {
+        if (result) resolve(result);
+        else reject(new Error('Photo encoding failed'));
+      }, 'image/png');
+    });
+    await savePhoto(blob);
+    flash('Saved', 900);
+  } catch (error) {
+    if (error?.name !== 'AbortError') flash('Could not save photo', 1200);
+  } finally {
+    photoInProgress = false;
+  }
 }
 
 const CRASH_TEXT = {
@@ -1149,8 +1404,15 @@ function endWave() {
 function showMenu() {
   if (game.waveMode) endWave();
   closeLeaderboard(false);
+  if (game.mode === 'paused') {
+    void audio.resume();
+    audio.setYouTubePlaying(false);
+    pausedYouTubeWasPlaying = false;
+  }
   const p = startPose();
   game.mode = 'ready';
+  ui.pauseOverlay.hidden = true;
+  syncPauseButton(false);
   placeBike(p.x, p.z, p.heading, 0);
   resetPickups();
   clearPowerUps();
@@ -1300,7 +1562,11 @@ function tintGhost() {
 
 function updateHud() {
   const b = game.bike;
+  const activeRide = game.mode === 'riding' || game.mode === 'paused';
   touchControls.hidden = game.mode !== 'riding';
+  ui.pause.hidden = !activeRide;
+  ui.photo.hidden = !activeRide;
+  syncPauseButton(game.mode === 'paused');
   ui.coffeeTimer.hidden = !(b.boostTime > 0);
   if (b.boostTime > 0) ui.coffeeTimer.textContent = `☕ 2x ${b.boostTime.toFixed(1)}`;
   ui.energyTimer.hidden = !(b.doubleJumpTime > 0);
@@ -1376,25 +1642,35 @@ function updateTimeScale(realDt) {
   game.timeScale += Math.max(-maxChange, Math.min(maxChange, effectiveTarget - game.timeScale));
 }
 
+function renderCurrentFrame() {
+  if (game.quality >= 1) renderer.render(scene, camera);
+  else post.render();
+}
+
 function frame(now) {
   const frameDt = Math.max(0, (now - last) / 1000);
   const dt = Math.min(0.1, frameDt);
   last = now;
-  updateAutoQuality(frameDt);
-  updateTimeScale(frameDt);
-  accumulator += dt * game.timeScale;
+  const paused = game.mode === 'paused';
+  if (!paused) {
+    updateAutoQuality(frameDt);
+    updateTimeScale(frameDt);
+    accumulator += dt * game.timeScale;
+  } else {
+    accumulator = 0;
+  }
   const input = readInput();
   let steps = 0;
-  while (accumulator >= DT && steps < 12) {
+  while (!paused && accumulator >= DT && steps < 12) {
     simulate(input);
-    input.jump = 0;
     jumpQueued = false;
+    input.jump = keys.jump ? 1 : 0;
     ghostRecorder.sample(game.time, game.bike);
     accumulator -= DT;
     steps += 1;
   }
   if (steps === 12) accumulator = 0;
-  interpolate(accumulator / DT);
+  if (!paused) interpolate(accumulator / DT);
   model.root.position.set(render.x, render.y, render.z);
   const waveElapsed = game.waveMode ? (performance.now() - waveStartedAt) / 1000 : 0;
   model.setWavePose(game.waveMode, waveElapsed);
@@ -1406,7 +1682,7 @@ function frame(now) {
     { ...game.bike, heading: render.heading, lean: render.lean },
     game.mode === 'riding' ? input : {},
     gradeAt(game.bike),
-    dt,
+    paused ? 0 : dt,
     terrain.heightAt,
   );
   const ghostFrame = ghostAssetsReady ? sampleGhost(bestGhost, game.time) : null;
@@ -1427,7 +1703,7 @@ function frame(now) {
       },
       {},
       gradeAt(ghostFrame),
-      dt,
+      paused ? 0 : dt,
       terrain.heightAt,
     );
   } else {
@@ -1435,12 +1711,11 @@ function frame(now) {
   }
   world.followSun(model.root.position);
   world.update(game.time, camera.position, game.bike.v, game.quality >= 2);
-  dust.update(game.bike, game.mode === 'riding', dt);
-  audio.update(game.bike, input, game.mode === 'riding', dt, game.timeScale);
-  updateCamera(dt);
+  dust.update(game.bike, game.mode === 'riding', paused ? 0 : dt);
+  audio.update(game.bike, input, game.mode === 'riding', paused ? 0 : dt, game.timeScale);
+  updateCamera(paused ? 0 : dt);
   updateHud();
-  if (game.quality >= 1) renderer.render(scene, camera);
-  else post.render();
+  renderCurrentFrame();
   requestAnimationFrame(frame);
 }
 
@@ -1537,8 +1812,7 @@ if (debug) {
   window.__captureFrame = (position, target) => {
     camera.position.fromArray(position);
     camera.lookAt(new THREE.Vector3(...target));
-    if (game.quality >= 1) renderer.render(scene, camera);
-    else post.render();
+    renderCurrentFrame();
     return renderer.domElement.toDataURL('image/png');
   };
 }

@@ -139,8 +139,28 @@
 <script>
   const game = document.getElementById('game');
   game.addEventListener('load', () => game.focus());
-  document.getElementById('fs').addEventListener('click', () => {
-    game.requestFullscreen?.().then(() => game.focus()).catch(() => {});
+  function toggleFullscreen() {
+    const fullscreenPromise = document.fullscreenElement
+      ? document.exitFullscreen()
+      : game.requestFullscreen?.();
+    fullscreenPromise?.then(() => {
+      if (document.fullscreenElement === game) game.focus();
+    }).catch(() => {});
+  }
+  document.getElementById('fs').addEventListener('click', toggleFullscreen);
+  window.addEventListener('keydown', (event) => {
+    if (
+      event.code !== 'KeyF'
+      || event.repeat
+      || event.ctrlKey
+      || event.metaKey
+      || event.altKey
+    ) return;
+    const target = event.target;
+    if (target instanceof Element
+      && target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
+    event.preventDefault();
+    toggleFullscreen();
   });
 </script>
 </body>

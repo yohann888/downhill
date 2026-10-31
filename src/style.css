@@ -24,6 +24,17 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #000; font-f
 #progress-percent { min-width: 4ch; text-align: right; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; text-shadow: 0 1px 4px rgba(0,0,0,.6); }
 #flash { position: absolute; top: 30%; width: 100%; text-align: center; font-size: 34px; font-weight: 800; letter-spacing: .04em; text-shadow: 0 2px 10px rgba(0,0,0,.6); opacity: 0; transition: opacity .25s; }
 #flash.show { opacity: 1; }
+#photo-flash { position: fixed; inset: 0; z-index: 20; background: #fff; opacity: 0; pointer-events: none; }
+#photo-flash.show { animation: photo-flash 150ms ease-out forwards; }
+@keyframes photo-flash { from { opacity: .85; } to { opacity: 0; } }
+#pause-overlay { position: fixed; inset: 0; z-index: 8; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+#pause-overlay[hidden] { display: none; }
+.pause-panel { width: min(320px, calc(100vw - 32px)); padding: 20px; border: 1px solid rgba(255,255,255,.55); border-radius: 10px; background: rgba(9,12,20,.92); box-shadow: 0 12px 36px rgba(0,0,0,.4); text-align: center; pointer-events: auto; }
+.pause-panel h2 { margin: 0 0 18px; font-size: 20px; font-weight: 600; }
+.pause-actions { display: grid; gap: 8px; }
+.pause-actions button { min-height: 42px; border: 1px solid rgba(255,255,255,.45); border-radius: 6px; background: rgba(255,255,255,.1); color: #fff; font: inherit; cursor: pointer; }
+.pause-actions button:focus-visible { outline: 2px solid #ffb547; outline-offset: 2px; }
+.version-credit { margin: 14px 0 0 !important; font: 7px/1.8 'Press Start 2P', monospace; color: #dceaff; opacity: .78; }
 #overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.35); }
 #overlay.hidden { display: none; }
 .panel { text-align: center; padding: 28px 36px; border-radius: 14px; background: rgba(10,14,20,.82); max-width: 92vw; max-height: 90vh; overflow-y: auto; }
@@ -72,15 +83,21 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #000; font-f
   .pickup-timer { font-size: 10px; }
 }
 #audio-controls { position: absolute; right: 16px; top: 75px; display: flex; gap: 6px; pointer-events: auto; }
+#audio-controls { z-index: 10; }
 #audio-controls button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,.4); background: rgba(0,0,0,.25); color: #fff; cursor: pointer; }
+#audio-controls button[hidden] { display: none; }
 #audio-controls .hud-label { display: inline; }
 #audio-controls .hud-icon { display: none; align-items: center; justify-content: center; }
+#audio-controls #pause-button .hud-icon,
+#audio-controls #photo-button .hud-icon { display: inline-flex; }
 #audio-controls .hud-icon svg { display: none; width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 #audio-controls #mute:not(.is-muted) .icon-sound-on,
 #audio-controls #mute.is-muted .icon-sound-off,
 #audio-controls #time-toggle:not(.is-night) .icon-day,
 #audio-controls #time-toggle.is-night .icon-night,
-#audio-controls #music-select .hud-icon svg { display: block; }
+#audio-controls #music-select .hud-icon svg,
+#audio-controls #pause-button .hud-icon svg,
+#audio-controls #photo-button .hud-icon svg { display: block; }
 #volume-label { position: absolute; right: 16px; top: 110px; display: flex; align-items: center; gap: 8px; pointer-events: auto; font-size: 12px; text-shadow: 0 1px 4px rgba(0,0,0,.6); }
 @media (pointer: coarse) { #volume-label { display: none; } }
 #volume { width: 104px; accent-color: #ffb547; cursor: pointer; }
@@ -259,7 +276,7 @@ body:has(#overlay:not(.hidden)) #brand-badge { visibility: hidden; }
 #full-leaderboard-list .leaderboard .player-row { background: rgba(34,232,255,.15); color: #ffe14a; }
 
 @media (max-width: 600px) {
-  #pickup-timers { top: calc(env(safe-area-inset-top) + 112px); left: 10px; max-width: calc(100vw - 155px); flex-wrap: wrap; }
+  #pickup-timers { top: calc(env(safe-area-inset-top) + 152px); left: 10px; max-width: calc(100vw - 20px); flex-wrap: wrap; }
   .pickup-timer { font-size: 10px; }
   .hud-top { top: calc(env(safe-area-inset-top) + 8px); left: 10px; right: 10px; gap: 6px; }
   .hud-top .stat { min-width: 52px; }

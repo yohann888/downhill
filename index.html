@@ -30,8 +30,15 @@
         <span id="energy-timer" class="pickup-timer energy-timer" hidden></span>
       </div>
       <div id="flash"></div>
+      <div id="photo-flash" aria-hidden="true"></div>
       <a id="brand-badge" class="devin-badge devin-badge-hud" href="https://devin.ai" target="_blank" rel="noopener"><img class="devin-logo-mark" src="./assets/devin-logo.svg" alt="Devin logo"><img class="devin-otter" src="./assets/otter-logo.png" alt=""><span>BUILT WITH DEVIN</span></a>
       <div id="audio-controls">
+        <button id="pause-button" type="button" aria-label="Pause" title="Pause" hidden>
+          <span class="hud-label">Pause</span>
+          <span class="hud-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" focusable="false"><path d="M8 5v14M16 5v14"/></svg>
+          </span>
+        </button>
         <button id="mute" type="button">
           <span class="hud-label"></span>
           <span class="hud-icon" aria-hidden="true">
@@ -52,10 +59,27 @@
             <svg class="icon-night" viewBox="0 0 24 24" focusable="false"><path d="M20.5 15.5A8.5 8.5 0 0 1 8.5 3.5 8.5 8.5 0 1 0 20.5 15.5Z"/></svg>
           </span>
         </button>
+        <button id="photo-button" type="button" aria-label="Photo" title="Photo" hidden>
+          <span class="hud-label">Photo</span>
+          <span class="hud-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" focusable="false"><path d="M4 7h3l1.5-2h7L17 7h3a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2Z"/><circle cx="12" cy="13" r="3.5"/></svg>
+          </span>
+        </button>
       </div>
       <label id="volume-label" for="volume">Volume
         <input id="volume" type="range" min="0" max="1" step="0.01" />
       </label>
+    </div>
+    <div id="pause-overlay" hidden>
+      <section class="pause-panel" role="dialog" aria-modal="true" aria-labelledby="pause-title">
+        <h2 id="pause-title">Paused</h2>
+        <div class="pause-actions">
+          <button id="pause-resume" type="button">Resume</button>
+          <button id="pause-restart" type="button">Restart</button>
+          <button id="pause-menu" type="button">Main menu</button>
+        </div>
+        <p class="app-version version-credit"></p>
+      </section>
     </div>
     <div id="overlay" class="start">
       <div class="panel">
@@ -82,6 +106,7 @@
                 <li><span><kbd>W</kbd><kbd>S</kbd></span>Pedal, brake</li>
                 <li><span><kbd>A</kbd><kbd>D</kbd></span>Steer</li>
                 <li><span><kbd>Space</kbd></span>Jump</li>
+                <li><span><kbd>P</kbd><kbd>C</kbd><kbd>F</kbd></span>Pause, photo, fullscreen</li>
                 <li><span><kbd>R</kbd></span>Respawn</li>
                 <li><span><kbd>N</kbd><kbd>L</kbd></span>Music, day/night</li>
               </ul>
@@ -113,7 +138,7 @@
         <button id="leaderboard-open-finish" class="leaderboard-open" type="button" hidden>Leaderboard</button>
         <button id="menu-button" type="button" class="menu-secondary">Main menu</button>
         <a id="brand-badge-finish" class="devin-badge devin-badge-finish" href="https://devin.ai" target="_blank" rel="noopener"><img class="devin-logo-mark" src="./assets/devin-logo.svg" alt="Devin logo"><img class="devin-otter" src="./assets/otter-logo.png" alt=""><span>BUILT WITH DEVIN</span></a>
-        <p class="production-credits">3D models by <a href="https://www.meshy.ai" target="_blank" rel="noopener">Meshy</a> &middot; Music, sound and voice by <a href="https://elevenlabs.io" target="_blank" rel="noopener">ElevenLabs</a> &middot; Rider and sky by <a href="https://rosebud.ai" target="_blank" rel="noopener">Rosebud AI</a> &middot; Leaderboard and AI commentary on <a href="https://modal.com" target="_blank" rel="noopener">Modal</a> &middot; &copy; 2026 Aloomii</p>
+        <p class="production-credits">3D models by <a href="https://www.meshy.ai" target="_blank" rel="noopener">Meshy</a> &middot; Music, sound and voice by <a href="https://elevenlabs.io" target="_blank" rel="noopener">ElevenLabs</a> &middot; Rider and sky by <a href="https://rosebud.ai" target="_blank" rel="noopener">Rosebud AI</a> &middot; Leaderboard and AI commentary on <a href="https://modal.com" target="_blank" rel="noopener">Modal</a> &middot; &copy; 2026 Aloomii &middot; <span class="app-version"></span></p>
       </div>
     </div>
     <div id="youtube-player-container" hidden><div id="youtube-player"></div></div>

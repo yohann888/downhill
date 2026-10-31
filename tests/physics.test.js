@@ -14,7 +14,7 @@ import {
   WHEELBASE,
 } from '../src/physics/constants.js';
 import { applyPickup, createBike, stepBike } from '../src/physics/bike.js';
-import { airTimeBonus } from '../src/feel.js';
+import { airTimeBonus, heightBonus } from '../src/feel.js';
 import {
   OTTER_DEPTH_RATIO,
   OTTER_HEIGHT_RATIO,
@@ -284,7 +284,7 @@ describe('bike physics', () => {
     expect(airborne.skid).toBe(0);
   });
 
-  it('hops about 0.62 m, observes cooldown, and stays below the air-bonus threshold', () => {
+  it('hops about 1.03 m, observes cooldown, and stays below the air-bonus thresholds', () => {
     const terrain = createPlaneTerrain();
     const bike = createBike({ x: 0, z: 0 }, terrain);
     const jump = { ...noInput, jump: 1 };
@@ -300,9 +300,10 @@ describe('bike physics', () => {
       maxHeight = Math.max(maxHeight, bike.y);
     }
 
-    expect(maxHeight).toBeCloseTo(0.62, 1);
-    expect(airtime).toBeCloseTo(0.7, 1);
+    expect(maxHeight).toBeCloseTo(1.03, 1);
+    expect(airtime).toBeCloseTo(0.92, 1);
     expect(airTimeBonus(airtime)).toBe(0);
+    expect(heightBonus(maxHeight)).toBe(0);
 
     const cooldownBike = createBike({ x: 0, z: 0 }, terrain);
     stepBike(cooldownBike, jump, terrain, [], DT);
@@ -624,6 +625,72 @@ describe('bike physics', () => {
     }
     expect(bike.crashed).toBeNull();
   });
+
+  it.each([6, 15])('clears a 0.4 m log at %s m/s with a timed hop', (speed) => {
+    const terrain = createPlaneTerrain();
+    const logZ = -speed * 0.45;
+    const log = {
+      type: 'log',
+      x: 0,
+      z: logZ,
+      x1: -1,
+      z1: logZ,
+      x2: 1,
+      z2: logZ,
+      r: 0.2,
+      h: 0.4,
+    };
+    const bike = createBike({ x: 0, z: 0 }, terrain);
+    bike.v = speed;
+    stepBike(bike, { ...noInput, jump: 1 }, terrain, [log], DT);
+    for (let elapsed = DT; elapsed < 1.2 && bike.z > logZ - 0.8 && !bike.crashed; elapsed += DT) {
+      stepBike(bike, noInput, terrain, [log], DT);
+    }
+    expect(bike.crashed).toBeNull();
+    expect(bike.z).toBeLessThan(logZ - 0.8);
+  });
+
+  it('buffers a jump pressed 0.1 seconds before touchdown', () => {
+    const terrain = createPlaneTerrain();
+    const bike = createBike({ x: 0, z: 0 }, terrain);
+    stepBike(bike, { ...noInput, jump: 1 }, terrain, [], DT);
+    for (let elapsed = DT; elapsed < 0.8; elapsed += DT) {
+      stepBike(bike, noInput, terrain, [], DT);
+    }
+    stepBike(bike, { ...noInput, jump: 1 }, terrain, [], DT);
+    stepBike(bike, noInput, terrain, [], DT);
+    for (let elapsed = 0; bike.airborne && elapsed < 0.2; elapsed += DT) {
+      stepBike(bike, noInput, terrain, [], DT);
+    }
+    expect(bike.airborne).toBe(false);
+    stepBike(bike, noInput, terrain, [], DT);
+    expect(bike.airborne).toBe(true);
+    expect(bike.jumpCooldown).toBeCloseTo(0.4);
+  });
+
+  it('does not repeat a hop while jump remains held', () => {
+    const terrain = createPlaneTerrain();
+    const bike = createBike({ x: 0, z: 0 }, terrain);
+    for (let elapsed = 0; elapsed < 2; elapsed += DT) {
+      stepBike(bike, { ...noInput, jump: 1 }, terrain, [], DT);
+    }
+    expect(bike.airborne).toBe(false);
+    expect(bike.jumpCooldown).toBe(0);
+  });
+
+  it('allows a coyote hop briefly after leaving a bump', () => {
+    const terrain = createStepDropTerrain(1);
+    const bike = createBike({ x: 0, z: 0 }, terrain);
+    bike.v = 12;
+    for (let elapsed = 0; elapsed < 4 && !bike.airborne; elapsed += DT) {
+      stepBike(bike, noInput, terrain, [], DT);
+    }
+    expect(bike.airborne).toBe(true);
+    expect(bike.groundedTimer).toBeGreaterThan(0);
+    stepBike(bike, { ...noInput, jump: 1 }, terrain, [], DT);
+    expect(bike.jumpCooldown).toBeCloseTo(0.4);
+    expect(bike.vy).toBeGreaterThan(0);
+  });
 });
 
 describe('hop on a downhill', () => {
@@ -644,7 +711,7 @@ describe('hop on a downhill', () => {
     }
     expect(bike.crashed).toBeFalsy();
     expect(air).toBeGreaterThan(0.25);
-    expect(air).toBeLessThan(0.8);
+    expect(air).toBeLessThan(1);
     expect(airTimeBonus(air)).toBe(0);
   });
 });
@@ -729,7 +796,7 @@ describe('power-up physics', () => {
     stepBike(bike, { ...noInput, jump: 1 }, terrain, [], DT);
     expect(bike.doubleJumped).toBe(false);
     expect(bike.doubleJumpUsed).toBe(false);
-    expect(bike.vy).toBeCloseTo(3.5 - G * DT, 10);
+    expect(bike.vy).toBeCloseTo(4.5 - G * DT, 10);
 
     bike.y = 0.005;
     bike.vy = -1;
