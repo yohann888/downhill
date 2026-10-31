@@ -132,8 +132,24 @@
         <h1 id="overlay-title">Downhill</h1>
         <p id="overlay-body"></p>
         <form id="finish-controls" hidden>
-          <label for="rider-name">Name</label>
-          <input id="rider-name" name="name" maxlength="12" autocomplete="nickname" />
+          <label class="initials-label" for="initial-slot-0">Initials</label>
+          <div id="initials-picker" class="initials-picker" aria-label="Choose up to three initials">
+            <div class="initial-slot-group">
+              <button class="initial-step" type="button" data-initial-index="0" data-change="1" aria-label="Increase first initial">▲</button>
+              <button id="initial-slot-0" class="initial-slot" type="button" role="spinbutton" tabindex="0" data-initial-index="0" aria-label="First initial" aria-valuemin="0" aria-valuemax="35" aria-valuenow="0" aria-valuetext="A">A</button>
+              <button class="initial-step" type="button" data-initial-index="0" data-change="-1" aria-label="Decrease first initial">▼</button>
+            </div>
+            <div class="initial-slot-group">
+              <button class="initial-step" type="button" data-initial-index="1" data-change="1" aria-label="Increase second initial">▲</button>
+              <button id="initial-slot-1" class="initial-slot" type="button" role="spinbutton" tabindex="0" data-initial-index="1" aria-label="Second initial" aria-valuemin="0" aria-valuemax="35" aria-valuenow="0" aria-valuetext="A">A</button>
+              <button class="initial-step" type="button" data-initial-index="1" data-change="-1" aria-label="Decrease second initial">▼</button>
+            </div>
+            <div class="initial-slot-group">
+              <button class="initial-step" type="button" data-initial-index="2" data-change="1" aria-label="Increase third initial">▲</button>
+              <button id="initial-slot-2" class="initial-slot" type="button" role="spinbutton" tabindex="0" data-initial-index="2" aria-label="Third initial" aria-valuemin="0" aria-valuemax="35" aria-valuenow="0" aria-valuetext="A">A</button>
+              <button class="initial-step" type="button" data-initial-index="2" data-change="-1" aria-label="Decrease third initial">▼</button>
+            </div>
+          </div>
           <button type="submit">Submit</button>
           <div id="finish-leaderboard"></div>
         </form>

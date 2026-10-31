@@ -50,7 +50,7 @@ def _top_entries() -> list[dict[str, Any]]:
 
 def _public_run(item: dict[str, Any]) -> dict[str, Any]:
     return {
-        "name": item["name"],
+        "name": str(item["name"]).upper()[:3],
         "time": item["time"],
         "penalties": item["penalties"],
         "bonus": item.get("bonus", 0),
@@ -64,7 +64,10 @@ async def get_leaderboard() -> dict[str, Any]:
     ghost = board.get(BEST_GHOST_KEY)
     return {
         "top": [_public_run(item) for item in _top_entries()[:TOP_SIZE]],
-        "ghost": ghost,
+        "ghost": {
+            **ghost,
+            "name": str(ghost.get("name", "")).upper()[:3],
+        } if isinstance(ghost, dict) else ghost,
     }
 
 

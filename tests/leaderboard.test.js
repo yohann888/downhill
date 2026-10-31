@@ -13,7 +13,7 @@ describe('buildRankOverlayRows', () => {
     expect(rows).toHaveLength(10);
     expect(rows[3]).toMatchObject({
       rank: 4,
-      name: 'Rider 4',
+      name: 'RID',
       time: 103,
       highlighted: true,
     });
@@ -26,7 +26,7 @@ describe('buildRankOverlayRows', () => {
     expect(rows).toHaveLength(11);
     expect(rows[10]).toEqual({
       rank: 12,
-      name: 'Last Rider',
+      name: 'LAS',
       time: 142.5,
       highlighted: true,
     });
@@ -45,7 +45,7 @@ describe('rivalLine', () => {
       { name: 'Rider 3', time: 26.96 },
     ];
 
-    expect(rivalLine(top, 3)).toBe('1.8 s behind #2 MAXR');
+    expect(rivalLine(top, 3)).toBe('1.8 s behind #2 MAX');
   });
 
   it('returns null when the rank is missing or beyond the list', () => {

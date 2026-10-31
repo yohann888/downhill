@@ -19,7 +19,7 @@ import {
   slowMoTarget,
 } from './feel.js';
 import { getCommentary, getLeaderboard, postRun } from './api.js';
-import { buildRankOverlayRows, cleanText, rivalLine } from './leaderboard.js';
+import { buildRankOverlayRows, cleanText, displayName, rivalLine } from './leaderboard.js';
 import { createRecorder, sampleGhost } from './ghost.js';
 import { getEditableKeyboardTarget } from './keyboard.js';
 import { savePhoto } from './photo.js';
@@ -108,7 +108,8 @@ const ui = {
   startLeaderboard: document.getElementById('start-leaderboard'),
   startBest: document.getElementById('start-best'),
   finishForm: document.getElementById('finish-controls'),
-  nameInput: document.getElementById('rider-name'),
+  initialsPicker: document.getElementById('initials-picker'),
+  initialSlots: [...document.querySelectorAll('.initial-slot')],
   submitButton: document.querySelector('#finish-controls button[type="submit"]'),
   finishLeaderboard: document.getElementById('finish-leaderboard'),
   leaderboardTitle: document.getElementById('leaderboard-open-title'),
@@ -158,6 +159,80 @@ function syncHudButton(button, label) {
   button.querySelector('.hud-label').textContent = label;
   button.setAttribute('aria-label', label);
   button.title = label;
+}
+const INITIALS_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+function setInitials(value) {
+  const initials = String(value || 'AAA').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 3);
+  ui.initialSlots.forEach((slot, index) => {
+    const character = initials[index] || '';
+    slot.dataset.value = character;
+    slot.textContent = character || '_';
+    slot.setAttribute('aria-valuetext', character || 'blank');
+    slot.setAttribute('aria-valuenow', String(Math.max(0, INITIALS_CHARS.indexOf(character))));
+  });
+}
+function getInitials() {
+  return ui.initialSlots.map((slot) => slot.dataset.value || '').filter(Boolean).join('');
+}
+function setInitialsDisabled(disabled) {
+  ui.initialSlots.forEach((slot) => { slot.disabled = disabled; });
+  ui.initialsPicker.querySelectorAll('.initial-step').forEach((button) => {
+    button.disabled = disabled;
+  });
+}
+function stepInitial(index, amount) {
+  const slot = ui.initialSlots[index];
+  const current = INITIALS_CHARS.indexOf(slot.dataset.value || '');
+  const next = current < 0
+    ? (amount > 0 ? 0 : INITIALS_CHARS.length - 1)
+    : (current + amount + INITIALS_CHARS.length) % INITIALS_CHARS.length;
+  setSlotValue(index, INITIALS_CHARS[next]);
+}
+function setSlotValue(index, value) {
+  const slot = ui.initialSlots[index];
+  slot.dataset.value = value;
+  slot.textContent = value || '_';
+  slot.setAttribute('aria-valuetext', value || 'blank');
+  slot.setAttribute('aria-valuenow', String(Math.max(0, INITIALS_CHARS.indexOf(value))));
+}
+function focusInitial(index) {
+  ui.initialSlots[Math.max(0, Math.min(ui.initialSlots.length - 1, index))].focus();
+}
+setInitials(localStorage.getItem('downhill.initials') || 'AAA');
+ui.initialsPicker.addEventListener('click', (event) => {
+  const button = event.target.closest('.initial-step');
+  if (!button) return;
+  const index = Number(button.dataset.initialIndex);
+  stepInitial(index, Number(button.dataset.change));
+  focusInitial(index);
+});
+for (const slot of ui.initialSlots) {
+  slot.addEventListener('keydown', (event) => {
+    const index = Number(slot.dataset.initialIndex);
+    if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+      event.preventDefault();
+      event.stopPropagation();
+      stepInitial(index, event.key === 'ArrowUp' ? 1 : -1);
+    } else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+      event.preventDefault();
+      event.stopPropagation();
+      focusInitial(index + (event.key === 'ArrowRight' ? 1 : -1));
+    } else if (/^[A-Z0-9]$/i.test(event.key) && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      event.preventDefault();
+      event.stopPropagation();
+      setSlotValue(index, event.key.toUpperCase());
+      focusInitial(index + 1);
+    } else if (event.key === 'Backspace') {
+      event.preventDefault();
+      event.stopPropagation();
+      setSlotValue(index, '');
+      focusInitial(index - 1);
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      event.stopPropagation();
+      submitRun();
+    }
+  });
 }
 function syncPauseButton(paused = false) {
   syncHudButton(ui.pause, paused ? 'Resume (P)' : 'Pause (P)');
@@ -548,7 +623,7 @@ window.addEventListener('keydown', (e) => {
     setKey('jump', true);
     e.preventDefault();
   }
-  if (e.code === 'Enter' && game.mode === 'finished' && e.target !== ui.nameInput) {
+  if (e.code === 'Enter' && game.mode === 'finished') {
     e.preventDefault();
     submitRun();
     } else if (e.code === 'Enter' && youtubeControls.contains(e.target)) {
@@ -721,7 +796,7 @@ function start() {
   slowMoLocked = false;
   game.crashedSinceCheckpoint = false;
   ui.finishForm.hidden = true;
-  ui.nameInput.disabled = false;
+  setInitialsDisabled(false);
   ui.submitButton.disabled = false;
   ui.submitButton.textContent = 'Submit';
   ui.finishLeaderboard.hidden = true;
@@ -1004,7 +1079,7 @@ function renderStartBoard(empty = 'No times yet. Set the first one.') {
       appendRank(place, index + 1, placeLabel(index + 1));
       const name = document.createElement('span');
       name.className = 'name';
-      name.textContent = cleanText(entry.name);
+      name.textContent = displayName(entry.name);
       const time = document.createElement('span');
       time.className = 'time';
       time.textContent = Number(entry.time).toFixed(2);
@@ -1026,7 +1101,7 @@ function refreshStartBoard() {
     leaderboardEntries = result.top || [];
     bestGhost = result.ghost || null;
     ui.ghostStatus.textContent = bestGhost
-      ? `Ghost: ${bestGhost.name} ${Number(bestGhost.time).toFixed(2)} s`
+      ? `Ghost: ${displayName(bestGhost.name)} ${Number(bestGhost.time).toFixed(2)} s`
       : '';
     renderStartBoard();
   });
@@ -1062,7 +1137,7 @@ function renderLeaderboard(container, entries, playerRank = null) {
     const rankCell = document.createElement('td');
     appendRank(rankCell, index + 1);
     const name = document.createElement('td');
-    name.textContent = cleanText(entry.name);
+    name.textContent = displayName(entry.name);
     const time = document.createElement('td');
     time.textContent = `${Number(entry.time).toFixed(2)} s`;
     row.append(rankCell, name, time);
@@ -1101,7 +1176,7 @@ function renderRankOverlay(container, rows) {
     const rankCell = document.createElement('td');
     appendRank(rankCell, entry.rank);
     const name = document.createElement('td');
-    name.textContent = entry.name;
+    name.textContent = displayName(entry.name);
     const time = document.createElement('td');
     time.textContent = `${Number(entry.time).toFixed(2)} s`;
     row.append(rankCell, name, time);
@@ -1162,13 +1237,20 @@ async function submitRun() {
   if (game.mode !== 'finished' || game.runSubmitted || game.runSubmitting) return;
   const runId = game.runId;
   game.runSubmitting = true;
-  ui.nameInput.disabled = true;
+  setInitialsDisabled(true);
   ui.submitButton.disabled = true;
   ui.submitButton.textContent = 'Submitting...';
   try {
-    const name = ui.nameInput.value.trim() || 'Rider';
-    ui.nameInput.value = name;
-    localStorage.setItem('downhill-name', name);
+    const name = getInitials();
+    if (!name) {
+      setInitialsDisabled(false);
+      focusInitial(0);
+      game.runSubmitting = false;
+      ui.submitButton.disabled = false;
+      ui.submitButton.textContent = 'Submit';
+      return;
+    }
+    localStorage.setItem('downhill.initials', name);
     const run = { ...makeRunStats(name), ghost: ghostRecorder.getGhost() };
     const result = await postRun(run);
     if (runId !== game.runId) return;
@@ -1192,7 +1274,7 @@ async function submitRun() {
     if (runId === game.runId) {
       game.runSubmitting = false;
       if (!game.runSubmitted) {
-        ui.nameInput.disabled = false;
+        setInitialsDisabled(false);
         ui.submitButton.disabled = false;
         ui.submitButton.textContent = 'Submit';
       }
@@ -1346,9 +1428,10 @@ function simulate(input) {
     );
     ui.finishForm.hidden = false;
     ui.finishLeaderboard.hidden = true;
-    ui.nameInput.value = localStorage.getItem('downhill-name') || 'Rider';
+    setInitials(localStorage.getItem('downhill.initials') || 'AAA');
     ui.finishLeaderboard.replaceChildren();
-    getCommentary({ ...makeRunStats(ui.nameInput.value.trim() || 'Rider'), rank: null }).then(showCommentary);
+    getCommentary({ ...makeRunStats(getInitials()), rank: null }).then(showCommentary);
+    focusInitial(0);
   }
 }
 
@@ -1483,7 +1566,7 @@ function showMenu() {
   updateMovingObstacles(obstacles, 0);
   world.update(0);
   ui.finishForm.hidden = true;
-  ui.nameInput.disabled = false;
+  setInitialsDisabled(false);
   ui.submitButton.disabled = false;
   ui.submitButton.textContent = 'Submit';
   ui.finishLeaderboard.hidden = true;

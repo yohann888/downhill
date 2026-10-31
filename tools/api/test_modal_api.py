@@ -47,8 +47,8 @@ def test_get_leaderboard_returns_up_to_top_size(monkeypatch):
     result = asyncio.run(modal_api.get_leaderboard())
 
     assert len(result["top"]) == 50
-    assert result["top"][0]["name"] == "Rider0"
-    assert result["top"][-1]["name"] == "Rider49"
+    assert result["top"][0]["name"] == "RID"
+    assert result["top"][-1]["name"] == "RID"
 
 
 def test_post_run_returns_top_size(monkeypatch):
@@ -56,7 +56,7 @@ def test_post_run_returns_top_size(monkeypatch):
     board[modal_api.TOP_KEY] = [_entry(index) for index in range(50)]
     monkeypatch.setattr(modal_api, "board", board)
     run = {
-        "name": "New Rider",
+        "name": "new",
         "time": 30,
         "penalties": 0,
         "bonus": 0,
@@ -71,4 +71,25 @@ def test_post_run_returns_top_size(monkeypatch):
 
     assert result["rank"] == 1
     assert len(result["top"]) == 50
-    assert result["top"][0]["name"] == "New Rider"
+    assert result["top"][0]["name"] == "NEW"
+
+
+def test_get_leaderboard_clips_legacy_names_without_mutating_storage(monkeypatch):
+    board = MemoryBoard()
+    board[modal_api.TOP_KEY] = [{
+        **_entry(0),
+        "name": "Long Legacy Name",
+    }]
+    board[modal_api.BEST_GHOST_KEY] = {
+        "name": "Long Ghost Name",
+        "frames": [[0, 1, 2, 0, 0]],
+        "dt": 0.1,
+    }
+    monkeypatch.setattr(modal_api, "board", board)
+
+    result = asyncio.run(modal_api.get_leaderboard())
+
+    assert result["top"][0]["name"] == "LON"
+    assert result["ghost"]["name"] == "LON"
+    assert board[modal_api.TOP_KEY][0]["name"] == "Long Legacy Name"
+    assert board[modal_api.BEST_GHOST_KEY]["name"] == "Long Ghost Name"
