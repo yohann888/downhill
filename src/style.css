@@ -14,9 +14,9 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #000; font-f
 .energy-timer { color: #42edff; }
 .timer-stat { min-width: 92px; text-align: right; }
 #ghost-status { font-size: 11px; opacity: .9; white-space: nowrap; text-shadow: 0 1px 4px rgba(0,0,0,.6); }
-#split-status { font: 11px/1.45 'Bungee', system-ui, sans-serif; text-shadow: 0 1px 4px rgba(0,0,0,.8); white-space: nowrap; }
+#split-status { font: 26px/1.2 'Bungee', system-ui, sans-serif; text-shadow: 0 1px 4px rgba(0,0,0,.8); white-space: nowrap; }
 #split-status[hidden], #ghost-split[hidden] { display: none; }
-#ghost-split { display: block; font-size: 9px; }
+#ghost-split { display: block; font-size: 14px; }
 #split-status.ahead { color: #8bff9a; }
 #split-status.behind { color: #ff8585; }
 .progress-wrap { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; }
@@ -302,8 +302,8 @@ body:has(#overlay:not(.hidden)) #brand-badge { visibility: hidden; }
   .hud-top .stat small { font-size: 10px; }
   .timer-stat { min-width: 58px; }
   #ghost-status { font-size: 9px; }
-  #split-status { font-size: 9px; }
-  #ghost-split { font-size: 8px; }
+  #split-status { font-size: 18px; }
+  #ghost-split { font-size: 11px; }
   #progress-percent { min-width: 3ch; font-size: 10px; }
   #audio-controls { top: calc(env(safe-area-inset-top) + 104px); right: 10px; gap: 5px; }
   #audio-controls .hud-label { display: none; }
