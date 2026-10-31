@@ -4,8 +4,11 @@ import {
   BRAKE_RAMP,
   BOOST_ACCEL,
   CDA,
+  COYOTE_TIME,
   G,
   HEAVY_LANDING_VN,
+  HOP_SPEED,
+  JUMP_BUFFER_TIME,
   LOAD_MAX,
   LOAD_MIN,
   LOAD_PROBE,
@@ -92,6 +95,9 @@ export function createBike({ x, z, heading = 0 }, terrain) {
     doubleJumpTime: 0,
     doubleJumpUsed: false,
     doubleJumped: false,
+    jumpBuffer: 0,
+    jumpHeld: false,
+    groundedTimer: 0,
     foliageHit: null,
     foliageTrees: new Set(),
     lastGroundY: y,
@@ -109,6 +115,13 @@ export function applyPickup(state, type) {
 
 export function stepBike(state, input, terrain, obstacles, dt) {
   const airborneAtStart = state.airborne;
+  const jumpHeld = Boolean(input.jump);
+  const jumpPressed = jumpHeld && !state.jumpHeld;
+  state.jumpHeld = jumpHeld;
+  state.jumpBuffer = jumpPressed
+    ? JUMP_BUFFER_TIME
+    : decrementTimer(state.jumpBuffer, dt);
+  state.groundedTimer = decrementTimer(state.groundedTimer, dt);
   state.heavyLanding = false;
   state.landingImpact = 0;
   state.skid = 0;
@@ -148,9 +161,23 @@ export function stepBike(state, input, terrain, obstacles, dt) {
     1,
   );
 
+  let groundHop = false;
   if (
+    state.jumpBuffer > 0 &&
+    (!state.airborne || state.groundedTimer > 0) &&
+    state.jumpCooldown <= 0
+  ) {
+    const grade = gradeAlongHeading(terrain, state.x, state.z, state.heading);
+    const verticalBase = state.airborne ? Math.max(state.vy, 0) : state.vy;
+    state.vy = verticalBase + HOP_SPEED / Math.sqrt(1 + grade * grade);
+    state.jumpCooldown = 0.4;
+    state.airborne = true;
+    state.jumpBuffer = 0;
+    state.groundedTimer = 0;
+    groundHop = true;
+  } else if (
+    jumpPressed &&
     airborneAtStart &&
-    input.jump &&
     state.doubleJumpTime > 0 &&
     !state.doubleJumpUsed &&
     state.jumpCooldown <= 0
@@ -159,11 +186,7 @@ export function stepBike(state, input, terrain, obstacles, dt) {
     state.doubleJumpUsed = true;
     state.doubleJumped = true;
     state.jumpCooldown = 0.4;
-  } else if (!state.airborne && input.jump && state.jumpCooldown <= 0) {
-    const grade = gradeAlongHeading(terrain, state.x, state.z, state.heading);
-    state.vy += 3.5 / Math.sqrt(1 + grade * grade);
-    state.jumpCooldown = 0.4;
-    state.airborne = true;
+    state.jumpBuffer = 0;
   }
 
   if (!state.airborne) {
@@ -319,6 +342,12 @@ export function stepBike(state, input, terrain, obstacles, dt) {
       state.doubleJumped = false;
       state.lastGroundY = groundY;
     }
+  }
+
+  if (!state.airborne) {
+    state.groundedTimer = 0;
+  } else if (!airborneAtStart && !groundHop) {
+    state.groundedTimer = COYOTE_TIME;
   }
 
   if (!state.airborne) {

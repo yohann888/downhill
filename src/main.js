@@ -533,7 +533,7 @@ const readInput = () => ({
   throttle: keys.throttle ? 1 : 0,
   brake: keys.brake ? 1 : 0,
   steer: (keys.right ? 1 : 0) - (keys.left ? 1 : 0),
-  jump: jumpQueued ? 1 : 0,
+  jump: keys.jump || jumpQueued ? 1 : 0,
 });
 
 const game = {
@@ -1531,8 +1531,8 @@ function frame(now) {
   let steps = 0;
   while (accumulator >= DT && steps < 12) {
     simulate(input);
-    input.jump = 0;
     jumpQueued = false;
+    input.jump = keys.jump ? 1 : 0;
     ghostRecorder.sample(game.time, game.bike);
     accumulator -= DT;
     steps += 1;

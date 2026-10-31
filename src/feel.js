@@ -7,7 +7,7 @@ export function nextQualityLevel(avgFps, level) {
 }
 
 export function airTimeBonus(airTime) {
-  if (!Number.isFinite(airTime) || airTime <= 0.8) return 0;
+  if (!Number.isFinite(airTime) || airTime <= 1) return 0;
   return Math.round(Math.min(6, 1.5 * (airTime - 0.5)) * 10) / 10;
 }
 
