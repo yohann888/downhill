@@ -764,16 +764,36 @@ export function createRiderModel() {
           assetSteer.localToWorld(new THREE.Vector3(side * 0.215, 0.665, 0.385)),
         );
       const waving = wavePoseActive && side > 0 && !crashing;
-      const shoulderLocal = waving
-        ? assetRiderMotion.worldToLocal(boneWorldPosition(riderBones.rightShoulder))
+      const waveOriginWorld = waving
+        ? boneWorldPosition(riderBones.rightArm)
         : null;
-      const waveTargetLocal = waving
-        ? shoulderLocal.clone().add(new THREE.Vector3(
-          side * 0.30 + Math.sin(wavePoseTime * Math.PI * 4) * 0.12,
-          0.50,
-          0.20,
-        ))
+      const waveSideWorld = waving
+        ? boneWorldPosition(riderBones.rightShoulder)
+          .sub(boneWorldPosition(riderBones.leftShoulder))
+          .normalize()
+        : null;
+      const waveUpWorld = waving
+        ? new THREE.Vector3(0, 1, 0).transformDirection(assetRiderMotion.matrixWorld)
+        : null;
+      const waveForwardWorld = waving
+        ? new THREE.Vector3(0, 0, -1)
+          .transformDirection(root.matrixWorld)
+        : null;
+      const waveLength = waving
+        ? handChains[index].firstLength + handChains[index].secondLength
+        : 0;
+      const waveTargetWorld = waving
+        ? waveOriginWorld.clone()
+          .addScaledVector(
+            waveSideWorld,
+            waveLength * (0.45 + Math.sin(wavePoseTime * Math.PI * 4) * 0.10),
+          )
+          .addScaledVector(waveUpWorld, waveLength * 0.35)
+          .addScaledVector(waveForwardWorld, waveLength * 0.10)
         : gripLocal;
+      const waveTargetLocal = waving
+        ? assetRiderMotion.worldToLocal(waveTargetWorld.clone())
+        : waveTargetWorld;
       const smoothedGrip = waving
         ? waveTargetLocal
         : stepVectorSpring(handTargets[index], gripLocal, dt, crashing ? 8 : 16);
@@ -786,15 +806,17 @@ export function createRiderModel() {
         handTargets[index].z.velocity = 0;
       }
       const handTarget = assetRiderMotion.localToWorld(smoothedGrip);
-      const elbowPole = assetRiderMotion.localToWorld(
-        waving
-          ? shoulderLocal.clone().add(new THREE.Vector3(side * 0.55, 0.15, 0.35))
-          : crashing
+      const elbowPole = waving
+        ? waveOriginWorld.clone()
+          .addScaledVector(waveSideWorld, waveLength)
+          .addScaledVector(waveUpWorld, -waveLength * 0.15)
+          .addScaledVector(waveForwardWorld, waveLength * 0.1)
+        : assetRiderMotion.localToWorld(
+          crashing
             ? new THREE.Vector3(side * 0.58, 0.9, 0.25)
             : new THREE.Vector3(side * 0.38, 0.85, 0.22),
-      );
+        );
       solveTwoBone(root, handChains[index], handTarget, elbowPole);
-      if (waving) rotateBoneAroundWorldAxis(riderBones.rightHand, forwardWorld, Math.PI / 2);
     }
 
     const headPitch = -(torsoPitch.value + pitchSpring.value);
