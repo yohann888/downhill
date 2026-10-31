@@ -161,6 +161,24 @@ export function createAudio() {
     });
   }
 
+  function playChime(ahead) {
+    if (!ctx || !master) return;
+    const frequencies = ahead ? [523.25, 783.99] : [783.99, 523.25];
+    frequencies.forEach((frequency, index) => {
+      const oscillator = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const start = ctx.currentTime + index * 0.12;
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(frequency, start);
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(0.08, start + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.1);
+      oscillator.connect(gain).connect(master);
+      oscillator.start(start);
+      oscillator.stop(start + 0.11);
+    });
+  }
+
   function createRainNoise() {
     const buffer = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
     const channel = buffer.getChannelData(0);
@@ -293,6 +311,9 @@ export function createAudio() {
       return volume;
     },
     playCommentary,
+    chime(ahead) {
+      playChime(Boolean(ahead));
+    },
     update(bike, input, riding, dt, timeScale = 1) {
       if (!ctx) return;
       const v = riding ? bike.v : 0;

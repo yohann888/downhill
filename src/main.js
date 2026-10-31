@@ -23,6 +23,7 @@ import { buildRankOverlayRows, cleanText, rivalLine } from './leaderboard.js';
 import { createRecorder, sampleGhost } from './ghost.js';
 import { getEditableKeyboardTarget } from './keyboard.js';
 import { savePhoto } from './photo.js';
+import { ghostTimeAtZ, loadBestSplits, saveBestSplits, splitDelta } from './splits.js';
 import { APP_VERSION_LABEL } from './app-version.js';
 import {
   loadRiderPreference,
@@ -123,6 +124,9 @@ const ui = {
   hud: document.getElementById('hud'),
   touch: document.getElementById('touch'),
   ghostStatus: document.getElementById('ghost-status'),
+  splitStatus: document.getElementById('split-status'),
+  splitDelta: document.getElementById('split-delta'),
+  ghostSplit: document.getElementById('ghost-split'),
   subtitle: document.getElementById('commentary-subtitle'),
   mute: document.getElementById('mute'),
   music: document.getElementById('music-select'),
@@ -624,6 +628,11 @@ const game = {
   qualityFps: null,
   assetsReady: false,
   crashedSinceCheckpoint: false,
+  bestSplits: null,
+  runSplits: [],
+  splitTimer: 0,
+  splitDelta: null,
+  ghostSplitDelta: null,
   runId: 0,
   runSubmitted: false,
   runSubmitting: false,
@@ -680,6 +689,11 @@ function start() {
   clearPowerUps();
   game.mode = 'riding';
   game.time = 0;
+  game.bestSplits = loadBestSplits(localStorage, terrain.checkpoints.length);
+  game.runSplits = [];
+  game.splitTimer = 0;
+  game.splitDelta = null;
+  game.ghostSplitDelta = null;
   game.airTime = 0;
   game.airPeak = 0;
   game.airDoubleJumped = false;
@@ -1224,6 +1238,7 @@ function simulate(input) {
   }
   if (b.foliageHit) dust.leafBurst(b.foliageHit);
   game.time += DT;
+  game.splitTimer = Math.max(0, game.splitTimer - DT);
   if (!game.leaderboardWarmed && -b.z / terrain.courseLength >= 0.8) {
     game.leaderboardWarmed = true;
     void getLeaderboard();
@@ -1272,6 +1287,15 @@ function simulate(input) {
   const next = terrain.checkpoints[game.checkpoint + 1];
   if (next && s >= next.s) {
     game.checkpoint += 1;
+    const splitIndex = game.checkpoint;
+    const runTime = game.time + game.penalty - game.bonus;
+    game.runSplits[splitIndex] = runTime;
+    const delta = splitDelta(runTime, game.bestSplits?.[splitIndex]);
+    const ghostTime = bestGhost ? ghostTimeAtZ(bestGhost, next.z) : null;
+    game.splitDelta = delta;
+    game.ghostSplitDelta = ghostTime === null ? null : game.time - ghostTime;
+    game.splitTimer = 1.5;
+    if (delta !== null) audio.chime(delta <= 0);
     flash(`Checkpoint ${game.checkpoint + 1}`, 900);
     audio.event('checkpoint', !game.crashedSinceCheckpoint && !b.crashed);
     game.crashedSinceCheckpoint = false;
@@ -1296,6 +1320,7 @@ function simulate(input) {
     if (isBest) {
       game.best = total;
       localStorage.setItem('downhill-best-900', String(total));
+      saveBestSplits(localStorage, terrain.checkpoints.length, game.runSplits);
     }
     audio.event('finish');
     if (isBest) audio.event('best');
@@ -1575,6 +1600,22 @@ function updateHud() {
   }
   ui.speed.textContent = String(Math.round(b.v * 3.6));
   ui.timer.textContent = (game.time + game.penalty - game.bonus).toFixed(2);
+  const splitVisible = game.splitTimer > 0 && activeRide;
+  ui.splitStatus.hidden = !splitVisible;
+  ui.ghostStatus.hidden = splitVisible;
+  if (splitVisible) {
+    ui.splitDelta.textContent = game.splitDelta === null
+      ? ''
+      : `${game.splitDelta > 0 ? '+' : ''}${game.splitDelta.toFixed(2)}`;
+    ui.splitStatus.classList.toggle('ahead', game.splitDelta !== null && game.splitDelta <= 0);
+    ui.splitStatus.classList.toggle('behind', game.splitDelta !== null && game.splitDelta > 0);
+    ui.ghostSplit.hidden = game.ghostSplitDelta === null;
+    if (game.ghostSplitDelta !== null) {
+      ui.ghostSplit.textContent = `vs ${displayName(bestGhost?.name)} ${game.ghostSplitDelta > 0 ? '+' : ''}${game.ghostSplitDelta.toFixed(2)}`;
+    }
+  } else {
+    ui.splitStatus.classList.remove('ahead', 'behind');
+  }
   const progress = Math.max(0, Math.min(1, -b.z / terrain.courseLength));
   ui.progress.style.width = `${progress * 100}%`;
   ui.progressPercent.textContent = `${Math.round(progress * 100)}%`;
