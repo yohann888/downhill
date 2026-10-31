@@ -33,8 +33,8 @@ while IFS= read -r -d '' model; do
     name="rider-body"
   fi
   texture_size=1024
-  if [[ "$name" =~ (pine|tree|rock|boulder|stump|log|otter) ]]; then
-    texture_size=512
+  if [[ "$name" =~ ^(rider|rider-body|rider-red|rider-black|otter|bike-[a-z0-9-]+)$ ]]; then
+    texture_size=2048
   fi
   output="$MODEL_DIR/$name.glb"
   before="$(wc -c < "$model")"
@@ -80,6 +80,6 @@ done < <(find "$RAW_DIR" -type f -name '*.mp3' -print0 2>/dev/null)
 
 total_bytes="$(find "$ROOT/public/assets" -type f -print0 | xargs -0 -r wc -c | awk 'END { print $1 + 0 }')"
 printf 'public/assets total: %s bytes\n' "$total_bytes"
-if (( total_bytes > 7 * 1024 * 1024 )); then
-  printf 'public/assets exceeds the 7 MiB target\n' >&2
+if (( total_bytes > 20 * 1024 * 1024 )); then
+  printf 'public/assets exceeds the 20 MiB target\n' >&2
 fi
