@@ -24,7 +24,6 @@ export const BRAKE_RAMP = 0.3;
 export const WASHOUT_RATIO = 1.25;
 export const WASHOUT_TIME = 0.3;
 export const WASHOUT_MIN_SPEED = 6;
-export const HARD_LANDING_VN = 16;
 export const HEAVY_LANDING_VN = 7;
 export const AIR_EPS = 0.05;
 export const BIKE_RADIUS = 0.35;

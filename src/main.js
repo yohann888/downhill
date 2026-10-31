@@ -10,7 +10,12 @@ import { createDust } from './render/dust.js';
 import { createAudio } from './audio.js';
 import { loadModels } from './render/assets.js';
 import { createPost } from './render/post.js';
-import { airTimeBonus, nextQualityLevel, slowMoTarget } from './feel.js';
+import {
+  airTimeBonus,
+  heightBonus,
+  nextQualityLevel,
+  slowMoTarget,
+} from './feel.js';
 import { getCommentary, getLeaderboard, postRun } from './api.js';
 import { buildRankOverlayRows } from './leaderboard.js';
 import { createRecorder, sampleGhost } from './ghost.js';
@@ -75,6 +80,7 @@ const ui = {
   title: document.getElementById('overlay-title'),
   body: document.getElementById('overlay-body'),
   button: document.getElementById('overlay-button'),
+  menuButton: document.getElementById('menu-button'),
   startLeaderboard: document.getElementById('start-leaderboard'),
   startBest: document.getElementById('start-best'),
   finishForm: document.getElementById('finish-controls'),
@@ -84,6 +90,7 @@ const ui = {
   wavePanel: document.getElementById('wave-panel'),
   waveLeaderboard: document.getElementById('wave-leaderboard'),
   rideAgain: document.getElementById('wave-ride-again'),
+  waveMenu: document.getElementById('wave-menu'),
   hud: document.getElementById('hud'),
   touch: document.getElementById('touch'),
   ghostStatus: document.getElementById('ghost-status'),
@@ -159,6 +166,11 @@ const KEYMAP = {
   KeyW: 'throttle', ArrowUp: 'throttle', KeyS: 'brake', ArrowDown: 'brake',
 };
 window.addEventListener('keydown', (e) => {
+  if (e.code === 'Escape' && (game.mode === 'finished' || game.waveMode)) {
+    e.preventDefault();
+    showMenu();
+    return;
+  }
   if (e.target === ui.nameInput) return;
   if (e.code === 'KeyN' && !e.repeat) {
     ui.music.click();
@@ -213,6 +225,8 @@ ui.finishForm.addEventListener('submit', (event) => {
   submitRun();
 });
 ui.rideAgain.addEventListener('click', () => start());
+ui.menuButton.addEventListener('click', () => showMenu());
+ui.waveMenu.addEventListener('click', () => showMenu());
 
 const readInput = () => ({
   throttle: keys.throttle ? 1 : 0,
@@ -232,7 +246,9 @@ const game = {
   crashTimer: 0,
   maxSpeed: 0,
   airTime: 0,
+  airPeak: 0,
   maxAir: 0,
+  maxHeight: 0,
   crashes: 0,
   otterHits: 0,
   timeScale: 1,
@@ -274,6 +290,8 @@ function start() {
   placeBike(p.x, p.z, p.heading, 0);
   game.mode = 'riding';
   game.time = 0;
+  game.airTime = 0;
+  game.airPeak = 0;
   updateMovingObstacles(obstacles, 0);
   world.update(0);
   game.penalty = 0;
@@ -281,6 +299,7 @@ function start() {
   game.checkpoint = -1;
   game.maxSpeed = 0;
   game.maxAir = 0;
+  game.maxHeight = 0;
   game.crashes = 0;
   game.otterHits = 0;
   game.runId += 1;
@@ -312,6 +331,7 @@ function respawn(manual) {
   placeBike(p.x, p.z, p.heading, cp ? 5 : 0);
   model.resetCrash();
   game.airTime = 0;
+  game.airPeak = 0;
   game.timeScale = 1;
   slowMoRealTime = 0;
   slowMoLocked = false;
@@ -329,7 +349,6 @@ function flash(text, ms = 1200) {
 
 const CRASH_TEXT = {
   washout: 'Washed out',
-  'hard landing': 'Cased it',
   'off course': 'Off course',
   rock: 'Ottified!',
   stump: 'Hit a stump',
@@ -374,6 +393,22 @@ function renderStartBoard(empty = 'No times yet. Set the first one.') {
     board.append(list);
   }
   ui.startBest.textContent = game.best ? `Your best ${game.best.toFixed(2)}` : '';
+}
+
+function refreshStartBoard() {
+  renderStartBoard('Loading...');
+  return getLeaderboard().then((result) => {
+    if (!result) {
+      renderStartBoard('Leaderboard offline. Your best still counts.');
+      return;
+    }
+    leaderboardEntries = result.top || [];
+    bestGhost = result.ghost || null;
+    ui.ghostStatus.textContent = bestGhost
+      ? `Ghost: ${bestGhost.name} ${Number(bestGhost.time).toFixed(2)} s`
+      : '';
+    renderStartBoard();
+  });
 }
 
 function renderLeaderboard(container, entries, playerRank = null) {
@@ -520,7 +555,14 @@ function simulate(input) {
       game.trauma + Math.max(0, Math.min(1, (b.landingImpact - 4) / 7)),
     );
   }
-  if (b.airborne) game.airTime += DT;
+  if (b.airborne) {
+    game.airTime += DT;
+    game.airPeak = Math.max(
+      game.airPeak,
+      b.y - terrain.heightAt(b.x, b.z),
+    );
+    game.maxHeight = Math.max(game.maxHeight, game.airPeak);
+  }
   game.maxAir = Math.max(game.maxAir, game.airTime);
   if (!wasAir && b.airborne) {
     const kicker = terrain.kickers.find((item) => Math.abs(item.z - b.z) < 8);
@@ -528,11 +570,23 @@ function simulate(input) {
   }
   if (wasAir && !b.airborne && !b.crashed) {
     audio.event('land');
-    const bonus = airTimeBonus(game.airTime);
-    game.bonus += bonus;
-    if (bonus > 0) flash(`Big air -${bonus.toFixed(1)}s`, 1200);
+    const air = airTimeBonus(game.airTime);
+    const height = heightBonus(game.airPeak);
+    const bonus = Math.round((air + height) * 10) / 10;
+    game.bonus = Math.round((game.bonus + bonus) * 10) / 10;
+    if (height > 0) {
+      flash(
+        `Huge air ${Math.round(game.airPeak)} m  -${bonus.toFixed(1)}s`,
+        1500,
+      );
+    } else if (air > 0) {
+      flash(`Big air -${bonus.toFixed(1)}s`, 1200);
+    }
   }
-  if (!b.airborne) game.airTime = 0;
+  if (!b.airborne) {
+    game.airTime = 0;
+    game.airPeak = 0;
+  }
   game.maxSpeed = Math.max(game.maxSpeed, b.v);
   const s = -b.z;
   const next = terrain.checkpoints[game.checkpoint + 1];
@@ -660,6 +714,56 @@ function endWave() {
   camera.lookAt(cam.look);
   camera.updateProjectionMatrix();
   ui.overlay.classList.remove('hidden');
+}
+
+function showMenu() {
+  if (game.waveMode) endWave();
+  const p = startPose();
+  game.mode = 'ready';
+  placeBike(p.x, p.z, p.heading, 0);
+  game.time = 0;
+  game.penalty = 0;
+  game.bonus = 0;
+  game.checkpoint = -1;
+  game.crashTimer = 0;
+  game.maxSpeed = 0;
+  game.airTime = 0;
+  game.airPeak = 0;
+  game.maxAir = 0;
+  game.maxHeight = 0;
+  game.crashes = 0;
+  game.otterHits = 0;
+  game.timeScale = 1;
+  game.trauma = 0;
+  game.crashedSinceCheckpoint = false;
+  game.runId += 1;
+  game.runSubmitted = false;
+  game.runSubmitting = false;
+  game.leaderboardWarmed = false;
+  slowMoRealTime = 0;
+  slowMoLocked = false;
+  ghostRecorder.reset();
+  model.resetCrash();
+  updateMovingObstacles(obstacles, 0);
+  world.update(0);
+  ui.finishForm.hidden = true;
+  ui.nameInput.disabled = false;
+  ui.submitButton.disabled = false;
+  ui.submitButton.textContent = 'Submit';
+  ui.finishLeaderboard.hidden = true;
+  ui.finishLeaderboard.replaceChildren();
+  ui.wavePanel.hidden = true;
+  ui.hud.classList.remove('wave-mode');
+  ui.touch.hidden = true;
+  ui.title.textContent = 'Downhill';
+  ui.body.textContent = '';
+  ui.button.textContent = 'Press start';
+  ui.overlay.classList.add('start');
+  ui.overlay.classList.remove('hidden');
+  ui.flash.classList.remove('show');
+  ui.subtitle.classList.remove('show');
+  snapCamera();
+  void refreshStartBoard();
 }
 
 function interpolate(alpha) {
@@ -960,19 +1064,7 @@ loadModels(modelNames).then((models) => {
     game.assetStatus = { state: 'error', error: String(error), loadErrors: { ...window.__assetLoadErrors } };
   }
 });
-renderStartBoard('Loading...');
-getLeaderboard().then((result) => {
-  if (!result) {
-    renderStartBoard('Leaderboard offline. Your best still counts.');
-    return;
-  }
-  leaderboardEntries = result.top || [];
-  bestGhost = result.ghost || null;
-  ui.ghostStatus.textContent = bestGhost
-    ? `Ghost: ${bestGhost.name} ${Number(bestGhost.time).toFixed(2)} s`
-    : '';
-  renderStartBoard();
-});
+void refreshStartBoard();
 if (debug) {
   window.__game = game;
   window.__terrain = terrain;

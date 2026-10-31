@@ -99,6 +99,10 @@ body:has(#overlay.start:not(.hidden)) .hud-top, body:has(#overlay.start:not(.hid
 kbd { display: inline-block; min-width: 24px; padding: 3px 6px 2px; border: 2px solid #ff2bd6; border-bottom-width: 4px; border-radius: 4px; background: #1a0638; font: 9px/1.4 'Press Start 2P', monospace; color: #fff; text-align: center; }
 #overlay.start #overlay-button { font: 16px/1 'Press Start 2P', monospace; padding: 16px 28px; text-transform: uppercase; color: #1a0638; background: linear-gradient(180deg, #fff7a8, #ffe14a 45%, #ff9a1f); border: 3px solid #1a0638; border-radius: 4px; box-shadow: 5px 5px 0 #ff2bd6, 0 0 24px rgba(255,225,74,.6); animation: arcade-blink 1s steps(2, start) infinite; }
 #overlay.start #overlay-button:hover, #overlay.start #overlay-button:focus-visible { animation: none; transform: translate(-2px, -2px); box-shadow: 7px 7px 0 #ff2bd6, 0 0 30px rgba(255,225,74,.8); }
+#overlay.start #menu-button { display: none; }
+#overlay .menu-secondary, #wave-panel .menu-secondary { margin-left: 8px; padding: 10px 14px; border: 2px solid #22e8ff; border-radius: 4px; background: rgba(26,6,56,.85); color: #fff; box-shadow: 0 0 12px rgba(34,232,255,.3); font: 10px/1.4 'Press Start 2P', monospace; text-transform: uppercase; }
+#wave-panel .wave-actions { display: flex; gap: 6px; }
+#wave-panel .wave-actions button { flex: 1; min-width: 0; width: auto; margin: 0; padding: 6px 4px; }
 .arcade-credit { margin: 16px 0 0 !important; font: 8px/1.6 'Press Start 2P', monospace; letter-spacing: .1em; text-transform: uppercase; color: #b9a6ff; opacity: .9 !important; }
 @keyframes arcade-spin { to { transform: rotate(360deg); } }
 @keyframes arcade-bob { 50% { transform: translateY(-6px); } }

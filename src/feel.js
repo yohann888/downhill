@@ -10,3 +10,8 @@ export function airTimeBonus(airTime) {
   if (!Number.isFinite(airTime) || airTime <= 0.8) return 0;
   return Math.round(Math.min(6, 1.5 * (airTime - 0.5)) * 10) / 10;
 }
+
+export function heightBonus(peak) {
+  if (!Number.isFinite(peak) || peak <= 3) return 0;
+  return Math.round(Math.min(4, 0.5 * (peak - 3)) * 10) / 10;
+}

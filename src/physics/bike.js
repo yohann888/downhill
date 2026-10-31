@@ -5,7 +5,6 @@ import {
   CDA,
   G,
   HEAVY_LANDING_VN,
-  HARD_LANDING_VN,
   LOAD_MAX,
   LOAD_MIN,
   LOAD_PROBE,
@@ -268,9 +267,7 @@ export function stepBike(state, input, terrain, obstacles, dt) {
       const vn = (state.vy - groundSlopeVy) / Math.sqrt(1 + grade * grade);
       const impactSpeed = -vn;
       state.landingImpact = impactSpeed;
-      if (impactSpeed > HARD_LANDING_VN) {
-        state.crashed = 'hard landing';
-      } else if (impactSpeed >= HEAVY_LANDING_VN) {
+      if (impactSpeed >= HEAVY_LANDING_VN) {
         state.heavyLanding = true;
       }
       state.y = groundY;
