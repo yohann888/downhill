@@ -451,6 +451,11 @@ window.addEventListener('keydown', (e) => {
     }
     return;
   }
+  if (
+    game.mode === 'paused'
+    && ui.pauseOverlay.contains(e.target)
+    && (e.code === 'Enter' || e.code === 'Space')
+  ) return;
   if (e.code === 'Escape' && !ui.leaderboardOverlay.hidden) {
     e.preventDefault();
     closeLeaderboard();
@@ -517,7 +522,7 @@ window.addEventListener('keydown', (e) => {
     setKey(KEYMAP[e.code], true);
     e.preventDefault();
   }
-  if (e.code === 'Space' || e.code === 'KeyJ') {
+  if ((e.code === 'Space' || e.code === 'KeyJ') && game.mode !== 'paused') {
     setKey('jump', true);
     e.preventDefault();
   }
@@ -532,7 +537,7 @@ window.addEventListener('keydown', (e) => {
 });
 window.addEventListener('keyup', (e) => {
   if (KEYMAP[e.code]) setKey(KEYMAP[e.code], false);
-  if (e.code === 'Space' || e.code === 'KeyJ') setKey('jump', false);
+  if ((e.code === 'Space' || e.code === 'KeyJ') && game.mode !== 'paused') setKey('jump', false);
 });
 window.addEventListener('blur', () => {
   for (const k in keys) setKey(k, false);
