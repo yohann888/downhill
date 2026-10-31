@@ -87,13 +87,13 @@
     .panel { justify-content: center; flex-wrap: wrap; } .creator-credits { flex: 1 1 100%; max-width: none; font-size: 6px; } #fs { display: none; } .credit { display: none; }
   }
   @media (max-width: 600px) {
-    html, body { height: auto; min-height: 100%; overflow-x: hidden; overflow-y: auto; }
+    html, body { height: auto; min-height: 100%; overflow-x: hidden; overflow-y: auto; touch-action: auto; }
     main { height: auto; min-height: 100dvh; padding: 0; }
     .cabinet { --w: 100vw; width: 100%; flex: none; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; }
-    .marquee { order: 2; margin: 0; border-radius: 0; }
+    .marquee { order: 3; margin: 0; border-radius: 0; }
     .bezel { order: 1; flex: none; margin: 0; padding: 0; border-radius: 0; background: none; box-shadow: none; }
-    .frame { width: 100vw; height: 100svh; height: 100dvh; flex: none; aspect-ratio: auto; border-radius: 0; box-shadow: none; }
-    .panel { order: 3; margin: 0; border-radius: 0; }
+    .frame { width: 100vw; height: calc(100svh - 44px); height: calc(100dvh - 44px); flex: none; aspect-ratio: auto; border-radius: 0; box-shadow: none; }
+    .panel { order: 2; margin: 0; border-radius: 0; touch-action: auto; }
     .coin, #fs { display: none; }
     .creator-credits { font-size: 7px; }
     .credit { display: block; margin: 12px 16px 20px; text-align: center; }
