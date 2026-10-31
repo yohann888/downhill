@@ -359,7 +359,8 @@ describe('terrain and obstacle generation', () => {
       const brakeAfterStep = brake
         ? Math.min(1, bike.brake + DT / BRAKE_RAMP)
         : Math.max(0, bike.brake - (2 * DT) / BRAKE_RAMP);
-      const grip = terrain.surfaceAt(bike.x, bike.z).mu * G;
+      const grip =
+        bike.gripLimit ?? terrain.surfaceAt(bike.x, bike.z).mu * G;
       const availableLat = Math.sqrt(
         Math.max(0, grip * grip - (brakeAfterStep * grip) ** 2),
       );

@@ -20,9 +20,11 @@ import {
   OTTER_HEIGHT_RATIO,
 } from '../src/world/obstacles.js';
 import { COFFEE_TIME, ENERGY_TIME } from '../src/world/pickups.js';
+import { createTerrain } from '../src/world/terrain.js';
 import { createPlaneTerrain, createStepDropTerrain } from './helpers.js';
 
 const noInput = { throttle: 0, brake: 0, steer: 0 };
+const wrapAngle = (angle) => Math.atan2(Math.sin(angle), Math.cos(angle));
 
 function createHeightTerrain(heightAt) {
   return {
@@ -51,6 +53,87 @@ describe('bike physics', () => {
       stepBike(crest, noInput, crestTerrain, [], DT);
     }
     expect(crest.load).toBeLessThan(0.85);
+  });
+
+  it('allows full steering over a low-load crest without washing out', () => {
+    const terrain = createHeightTerrain((_x, z) => -0.02 * (z + 50) ** 2);
+    const bike = createBike({ x: 0, z: -50 }, terrain);
+    bike.v = 15;
+
+    for (let elapsed = 0; elapsed < 2; elapsed += DT) {
+      stepBike(bike, { throttle: 1, brake: 0, steer: 1 }, terrain, [], DT);
+    }
+
+    expect(bike.crashed).not.toBe('washout');
+  });
+
+  it('keeps kicker height continuous across both trail edges', () => {
+    const terrain = createTerrain();
+
+    for (const kicker of terrain.kickers) {
+      const z = -(kicker.s - 1);
+      const center = terrain.centerX(z);
+      const halfWidth = terrain.halfWidth(z);
+      for (const side of [-1, 1]) {
+        const inside = center + side * (halfWidth - 0.01);
+        const outside = center + side * (halfWidth + 0.01);
+        expect(
+          Math.abs(terrain.heightAt(inside, z) - terrain.heightAt(outside, z)),
+        ).toBeLessThan(0.1);
+      }
+    }
+  });
+
+  it('returns to trail center without washout or excessive kicker launch', () => {
+    const terrain = createTerrain();
+    const trailHeading = (z) =>
+      Math.atan2(
+        terrain.centerX(z - 0.5) - terrain.centerX(z + 0.5),
+        1,
+      );
+
+    for (const s0 of [150, 260, 400, 650]) {
+      for (const side of [-1, 1]) {
+        for (const u0 of [3, 10]) {
+          for (const v0 of [8, 14]) {
+            const z0 = -s0;
+            const bike = createBike({
+              x: terrain.centerX(z0) +
+                side * (terrain.halfWidth(z0) + u0),
+              z: z0,
+              heading: trailHeading(z0),
+            }, terrain);
+            bike.v = v0;
+            let maxVy = 0;
+
+            for (let elapsed = 0; elapsed < 3; elapsed += DT) {
+              const d = bike.x - terrain.centerX(bike.z);
+              const error = -d;
+              const desired =
+                trailHeading(bike.z) + Math.max(-0.6, Math.min(0.6, 0.12 * error));
+              const steer = Math.max(
+                -1,
+                Math.min(1, 3 * wrapAngle(desired - bike.heading)),
+              );
+              stepBike(
+                bike,
+                { throttle: 1, brake: 0, steer },
+                terrain,
+                [],
+                DT,
+              );
+              maxVy = Math.max(maxVy, bike.vy);
+            }
+
+            expect(bike.crashed).not.toBe('washout');
+            expect(
+              maxVy,
+              `s0=${s0}, side=${side}, u0=${u0}, v0=${v0}`,
+            ).toBeLessThanOrEqual(6);
+          }
+        }
+      }
+    }
   });
 
   it('lets steep camber steer the bike downhill without affecting gentle camber', () => {
