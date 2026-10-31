@@ -587,6 +587,8 @@ function buildMarkers(terrain) {
 
 export function buildWorld(scene, renderer, terrain, obstacles, pickups = []) {
   let timeMode = 'day';
+  let rainEnabled = false;
+  let rainLowQuality = false;
   const sky = new Sky();
   sky.scale.setScalar(20000);
   const u = sky.material.uniforms;
@@ -682,8 +684,8 @@ export function buildWorld(scene, renderer, terrain, obstacles, pickups = []) {
   const setNightMaterials = (isNight) => {
     for (const material of nightMaterials) {
       if (!originalRoughness.has(material)) originalRoughness.set(material, material.roughness);
-      material.roughness = isNight
-        ? Math.min(originalRoughness.get(material), 0.75)
+      material.roughness = isNight || rainEnabled
+        ? Math.min(originalRoughness.get(material), rainEnabled ? 0.46 : 0.75)
         : originalRoughness.get(material);
     }
   };
@@ -696,7 +698,7 @@ export function buildWorld(scene, renderer, terrain, obstacles, pickups = []) {
     dayBackgroundRotation.y = SKY_ROTATION;
     dayEnvironmentRotation.y = SKY_ROTATION;
     if (timeMode === 'day') {
-      scene.background = dayBackground;
+      scene.background = rainEnabled ? rainFogColor : dayBackground;
       scene.backgroundRotation.copy(dayBackgroundRotation);
       scene.environmentRotation.copy(dayEnvironmentRotation);
       scene.environment = dayEnvironment;
@@ -731,6 +733,28 @@ export function buildWorld(scene, renderer, terrain, obstacles, pickups = []) {
   const pickupModels = buildPickups(terrain, pickups);
   scene.add(trees, obstacleGroup, pickupModels.group);
   scene.add(buildMarkers(terrain));
+  const rainCount = 1500;
+  const rainPositions = new Float32Array(rainCount * 2 * 3);
+  const rainDrops = Array.from({ length: rainCount }, (_, index) => {
+    const x = Math.random() * 42 - 21;
+    const y = Math.random() * 30;
+    const z = Math.random() * 48 - 30;
+    const length = 0.8 + Math.random() * 0.8;
+    rainPositions.set([x, y, z, x - 0.12, y - length, z + 0.08], index * 6);
+    return { x, y, z, length };
+  });
+  const rainGeometry = new THREE.BufferGeometry();
+  rainGeometry.setAttribute('position', new THREE.BufferAttribute(rainPositions, 3));
+  const rain = new THREE.LineSegments(rainGeometry, new THREE.LineBasicMaterial({
+    color: 0xa8dfff,
+    transparent: true,
+    opacity: 0.48,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  }));
+  rain.frustumCulled = false;
+  rain.visible = false;
+  scene.add(rain);
   const daySunColor = sun.color.clone();
   const daySunIntensity = sun.intensity;
   const daySkyColor = hemi.color.clone();
@@ -738,6 +762,7 @@ export function buildWorld(scene, renderer, terrain, obstacles, pickups = []) {
   const dayHemiIntensity = hemi.intensity;
   const dayFogColor = scene.fog.color.clone();
   const dayFogDensity = scene.fog.density;
+  const rainFogColor = new THREE.Color(0x87939b);
   const activeLightDirection = { value: SUN_DIRECTION };
   const followTarget = new THREE.Vector3();
   function setTimeOfDay(mode) {
@@ -760,21 +785,21 @@ export function buildWorld(scene, renderer, terrain, obstacles, pickups = []) {
       hemi.groundColor.set(0x05070c);
       hemi.intensity = 0.12;
       scene.fog.color.set(0x1b2a3a);
-      scene.fog.density = 0.0006;
+      scene.fog.density = rainEnabled ? 0.00075 : 0.0006;
       activeLightDirection.value = MOON_LIGHT_DIRECTION;
     } else {
-      scene.background = dayBackground;
+      scene.background = rainEnabled ? rainFogColor : dayBackground;
       scene.backgroundRotation.copy(dayBackgroundRotation);
       scene.environmentRotation.copy(dayEnvironmentRotation);
       scene.environment = dayEnvironment;
       scene.environmentIntensity = 0.55;
-      sun.color.copy(daySunColor);
-      sun.intensity = daySunIntensity;
+      sun.color.copy(rainEnabled ? rainFogColor : daySunColor);
+      sun.intensity = daySunIntensity * (rainEnabled ? 0.4 : 1);
       hemi.color.copy(daySkyColor);
       hemi.groundColor.copy(dayGroundColor);
       hemi.intensity = dayHemiIntensity;
-      scene.fog.color.copy(dayFogColor);
-      scene.fog.density = dayFogDensity;
+      scene.fog.color.copy(rainEnabled ? rainFogColor : dayFogColor);
+      scene.fog.density = rainEnabled ? Math.max(dayFogDensity * 1.8, 0.0005) : dayFogDensity;
       activeLightDirection.value = SUN_DIRECTION;
     }
     for (const material of pineMaterials) {
@@ -789,6 +814,13 @@ export function buildWorld(scene, renderer, terrain, obstacles, pickups = []) {
 
   return {
     setTimeOfDay,
+    setRain(enabled, lowQuality = false) {
+      rainEnabled = Boolean(enabled);
+      rainLowQuality = Boolean(lowQuality);
+      rain.visible = rainEnabled;
+      rainGeometry.setDrawRange(0, rainCount * (rainLowQuality ? 1 : 2));
+      setTimeOfDay(timeMode);
+    },
     applyModels(models) {
       const pick = (name, axis) => (models[name] ? unitMesh(models[name], axis) : null);
       const pine = (name) => {
@@ -816,6 +848,7 @@ export function buildWorld(scene, renderer, terrain, obstacles, pickups = []) {
           if (material) nightMaterials.add(material);
         }
       }
+      setNightMaterials(timeMode === 'night');
       obstacleGroup.userData.swap({
         boulder: rock,
         'rock-flat': rockFlat,
@@ -838,9 +871,37 @@ export function buildWorld(scene, renderer, terrain, obstacles, pickups = []) {
     disposeWaveOtter(mesh) {
       obstacleGroup.userData.disposeWaveOtter(mesh);
     },
-    update(time) {
+    update(time, cameraPosition, riderSpeed = 0, lowQuality = false) {
       obstacleGroup.userData.update(time);
       pickupModels.update(time);
+      if (rainLowQuality !== Boolean(lowQuality)) {
+        rainLowQuality = Boolean(lowQuality);
+        rainGeometry.setDrawRange(0, rainCount * (rainLowQuality ? 1 : 2));
+      }
+      if (rainEnabled && cameraPosition) {
+        rain.position.copy(cameraPosition);
+        const now = performance.now() / 1000;
+        const dt = Math.min(0.05, Math.max(0, now - (rain.lastTime ?? now)));
+        rain.lastTime = now;
+        const positions = rainGeometry.attributes.position.array;
+        for (let index = 0; index < rainCount; index += 1) {
+          const drop = rainDrops[index];
+          drop.y -= 28 * dt;
+          drop.x -= riderSpeed * 0.00006;
+          if (drop.y < -2) {
+            drop.y = 18 + Math.random() * 16;
+            drop.x = Math.random() * 42 - 21;
+            drop.z = Math.random() * 48 - 30;
+          }
+          positions.set([
+            drop.x, drop.y, drop.z,
+            drop.x - 0.12 - riderSpeed * 0.0015,
+            drop.y - drop.length,
+            drop.z + 0.08,
+          ], index * 6);
+        }
+        rainGeometry.attributes.position.needsUpdate = true;
+      }
     },
     setPickupVisible(index, visible) {
       pickupModels.setVisible(index, visible);

@@ -6,6 +6,11 @@ const HALF_BASE = 0.575;
 const PEDAL_R = 0.17;
 const CRANK_Y = WHEEL_R + PEDAL_R;
 const CRANK_Z = 0.02;
+const BACK_PRINT_OFFSET = 0.13;
+const RIDER_RIG_CORRECTIONS = {
+  'rider-red': { yaw: 0 },
+  'rider-black': { yaw: 0 },
+};
 
 function bar(material, from, to, thickness = 0.045) {
   const a = new THREE.Vector3(...from);
@@ -44,6 +49,24 @@ function boxCorners(box) {
     new THREE.Vector3(max.x, max.y, min.z),
     new THREE.Vector3(max.x, max.y, max.z),
   ];
+}
+
+function getDeformedRiderBounds(scene) {
+  scene.updateMatrixWorld(true);
+  const inverseSceneWorld = scene.matrixWorld.clone().invert();
+  const bounds = new THREE.Box3();
+  const vertex = new THREE.Vector3();
+  scene.traverse((object) => {
+    if (!object.isSkinnedMesh) return;
+    object.skeleton.update();
+    const objectToScene = inverseSceneWorld.clone().multiply(object.matrixWorld);
+    const position = object.geometry.getAttribute('position');
+    for (let index = 0; index < position.count; index += 1) {
+      object.getVertexPosition(index, vertex);
+      bounds.expandByPoint(vertex.applyMatrix4(objectToScene));
+    }
+  });
+  return bounds;
 }
 
 function stepSpring(state, target, dt, omega = 12) {
@@ -303,6 +326,7 @@ export function createRiderModel() {
   let assetFrontWheel = null;
   let assetRearWheel = null;
   let riderCorners = [];
+  let backPrintMesh = null;
   let lastAirSpeed = 0;
   let wasAirborne = false;
   let assetStatus = { ready: false, reason: 'Assets have not been applied' };
@@ -310,7 +334,13 @@ export function createRiderModel() {
   let wavePoseActive = false;
   let wavePoseTime = 0;
 
-  function setAssets({ riderBody, bikeFrame, bikeWheel } = {}) {
+  function setAssets({
+    riderBody,
+    bikeFrame,
+    bikeWheel,
+    backPrint,
+    riderId = 'rider-body',
+  } = {}) {
     const failAssetSetup = (reason, details = {}) => {
       assetHolder.clear();
       assetHolder.visible = false;
@@ -323,6 +353,7 @@ export function createRiderModel() {
     }
     assetStatus = { ready: false, reason: 'Validating rider and bike models' };
     assetHolder.clear();
+    backPrintMesh = null;
     assetHolder.scale.setScalar(1);
     assetHolder.position.set(0, 0, 0);
     assetHolder.rotation.set(0, 0, 0);
@@ -330,6 +361,7 @@ export function createRiderModel() {
     assetRiderMotion = new THREE.Group();
     assetHolder.add(assetBikeMotion, assetRiderMotion);
 
+    const rigCorrection = RIDER_RIG_CORRECTIONS[riderId];
     const bikeScene = bikeFrame.scene;
     const bikeBox = new THREE.Box3().setFromObject(bikeScene);
     const bikeSize = bikeBox.getSize(new THREE.Vector3());
@@ -339,7 +371,12 @@ export function createRiderModel() {
     }
 
     riderScene = riderBody.scene;
-    const riderBox = new THREE.Box3().setFromObject(riderScene);
+    const skinnedRiderBounds = riderId === 'rider-body'
+      ? null
+      : getDeformedRiderBounds(riderScene);
+    const riderBox = skinnedRiderBounds && !skinnedRiderBounds.isEmpty()
+      ? skinnedRiderBounds
+      : new THREE.Box3().setFromObject(riderScene);
     riderCorners = boxCorners(riderBox);
     const riderSize = riderBox.getSize(new THREE.Vector3());
     if (riderSize.y < 1e-4) {
@@ -354,9 +391,10 @@ export function createRiderModel() {
     riderRoot.add(riderScene);
     assetRiderMotion.add(riderRoot);
 
-    const bikeScale = (2 * HALF_BASE) / bikeSize.z;
+    const bikeLongAxis = bikeSize.x > bikeSize.z ? 'x' : 'z';
+    const bikeScale = (2 * HALF_BASE) / Math.max(bikeSize.x, bikeSize.z);
     bikeAsset.scale.setScalar(bikeScale);
-    bikeAsset.rotation.y = Math.PI;
+    bikeAsset.rotation.y = bikeLongAxis === 'x' ? -Math.PI / 2 : 0;
     bikeAsset.position.y = WHEEL_R;
     bikeScene.position.set(-bikeCenter.x, -bikeBox.min.y, -bikeCenter.z);
 
@@ -389,7 +427,7 @@ export function createRiderModel() {
     };
 
     riderRoot.scale.setScalar(1.7 / riderSize.y);
-    riderRoot.rotation.y = Math.PI;
+    riderRoot.rotation.y = Math.PI + (rigCorrection?.yaw ?? 0);
     riderBaseY = WHEEL_R - riderBox.min.y * riderRoot.scale.y;
     riderRoot.position.set(0, riderBaseY, 0);
 
@@ -430,6 +468,41 @@ export function createRiderModel() {
     if (required.some((bone) => !bone)) {
       const missing = Object.entries(bones).filter(([, bone]) => !bone).map(([name]) => name);
       return failAssetSetup(`Missing rider bones: ${missing.join(', ')}`, { diagnostics });
+    }
+    if (backPrint) {
+      backPrint.colorSpace = THREE.SRGBColorSpace;
+      const spineScale = bones.spine2.getWorldScale(new THREE.Vector3());
+      const imageWidth = backPrint.image?.width || 1;
+      const imageHeight = backPrint.image?.height || 1;
+      const print = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.22, 0.22 * imageHeight / imageWidth),
+        new THREE.MeshBasicMaterial({
+          map: backPrint,
+          transparent: true,
+          depthWrite: false,
+          depthTest: true,
+          side: THREE.DoubleSide,
+          polygonOffset: true,
+          polygonOffsetFactor: -2,
+          polygonOffsetUnits: -2,
+          toneMapped: false,
+        }),
+      );
+      const riderRotation = riderRoot.getWorldQuaternion(new THREE.Quaternion());
+      const backDirection = new THREE.Vector3(0, 0, -1).applyQuaternion(riderRotation).normalize();
+      const printWorldPosition = boneWorldPosition(bones.spine2)
+        .addScaledVector(backDirection, BACK_PRINT_OFFSET);
+      printWorldPosition.y += 0.04;
+      print.position.copy(bones.spine2.worldToLocal(printWorldPosition));
+      print.scale.set(1 / Math.abs(spineScale.x), 1 / Math.abs(spineScale.y), 1 / Math.abs(spineScale.z));
+      const printWorldRotation = new THREE.Quaternion()
+        .setFromUnitVectors(new THREE.Vector3(0, 0, 1), backDirection);
+      print.quaternion.copy(
+        bones.spine2.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(printWorldRotation),
+      );
+      print.renderOrder = 2;
+      bones.spine2.add(print);
+      backPrintMesh = print;
     }
 
     const leftShoulder = boneWorldPosition(bones.leftShoulder);
@@ -673,7 +746,7 @@ export function createRiderModel() {
       const gripLocal = crashing
         ? new THREE.Vector3(side * 0.68, 1.2, -0.02)
         : assetRiderMotion.worldToLocal(
-          assetSteer.localToWorld(new THREE.Vector3(side * 0.34, 0.59, 0.08)),
+          assetSteer.localToWorld(new THREE.Vector3(side * 0.215, 0.665, 0.385)),
         );
       const smoothedGrip = stepVectorSpring(handTargets[index], gripLocal, dt, crashing ? 8 : 16);
       const handTarget = assetRiderMotion.localToWorld(smoothedGrip);
@@ -699,6 +772,15 @@ export function createRiderModel() {
         .copy(bindBones.get(riderBones.rightForeArm).quaternion)
         .multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, wave)));
       riderBones.rightHand.quaternion.copy(bindBones.get(riderBones.rightHand).quaternion);
+    }
+    root.updateMatrixWorld(true);
+    if (backPrintMesh && riderBones.spine2) {
+      const riderRotation = riderRoot.getWorldQuaternion(new THREE.Quaternion());
+      const backDirection = new THREE.Vector3(0, 0, -1).applyQuaternion(riderRotation).normalize();
+      const printWorldPosition = boneWorldPosition(riderBones.spine2)
+        .addScaledVector(backDirection, BACK_PRINT_OFFSET);
+      printWorldPosition.y += 0.04;
+      backPrintMesh.position.copy(riderBones.spine2.worldToLocal(printWorldPosition));
     }
     root.updateMatrixWorld(true);
   }

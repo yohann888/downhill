@@ -7,7 +7,9 @@ MODEL_DIR="$ROOT/public/assets/models"
 AUDIO_DIR="$ROOT/public/assets/audio"
 
 mkdir -p "$RAW_DIR" "$MODEL_DIR" "$AUDIO_DIR"
-modal volume get downhill-assets raw "$ROOT/tools/assets" --force
+if [[ "${SKIP_MODAL_GET:-0}" != 1 ]]; then
+  modal volume get downhill-assets raw "$ROOT/tools/assets" --force
+fi
 
 while IFS= read -r -d '' model; do
   filename="$(basename "$model")"
@@ -17,24 +19,17 @@ while IFS= read -r -d '' model; do
     exit 1
   fi
 
-  if [[ "$filename" == "rider.glb" && -f "$RAW_DIR/models/rider-rigged.glb" ]]; then
-    printf 'Skipping unrigged rider.glb; rider-rigged.glb will be published as rider.glb\n'
-    continue
-  fi
-  if [[ "$filename" == "rider-body.glb" && -f "$RAW_DIR/models/rider-body-rigged.glb" ]]; then
-    printf 'Skipping unrigged rider-body.glb; rider-body-rigged.glb will be published as rider-body.glb\n'
+  if [[ "$filename" =~ ^(rider|rider-body|rider-red|rider-black)\.glb$ && -f "$RAW_DIR/models/${source_name}-rigged.glb" ]]; then
+    printf 'Skipping unrigged %s; rigged model will be published instead\n' "$filename"
     continue
   fi
   name="$source_name"
-  if [[ "$filename" == "rider-rigged.glb" ]]; then
-    name="rider"
-  fi
-  if [[ "$filename" == "rider-body-rigged.glb" ]]; then
-    name="rider-body"
+  if [[ "$filename" =~ ^(rider|rider-body|rider-red|rider-black)-rigged\.glb$ ]]; then
+    name="${source_name%-rigged}"
   fi
   texture_size=1024
-  if [[ "$name" =~ (pine|tree|rock|boulder|stump|log|otter) ]]; then
-    texture_size=512
+  if [[ "$name" =~ ^(rider|rider-body|rider-red|rider-black|otter|bike-[a-z0-9-]+)$ ]]; then
+    texture_size=2048
   fi
   output="$MODEL_DIR/$name.glb"
   before="$(wc -c < "$model")"
@@ -49,6 +44,7 @@ while IFS= read -r -d '' model; do
   printf '%s %s -> %s bytes\n' "$filename" "$before" "$after"
 done < <(find "$RAW_DIR/models" -type f -name '*.glb' -print0 2>/dev/null)
 
+if [[ "${MODELS_ONLY:-0}" != 1 ]]; then
 while IFS= read -r -d '' audio; do
   filename="$(basename "$audio")"
   name="${filename%.mp3}"
@@ -77,9 +73,10 @@ while IFS= read -r -d '' audio; do
   fi
   printf '%s %s bytes\n' "$filename" "$(wc -c < "$output")"
 done < <(find "$RAW_DIR" -type f -name '*.mp3' -print0 2>/dev/null)
+fi
 
 total_bytes="$(find "$ROOT/public/assets" -type f -print0 | xargs -0 -r wc -c | awk 'END { print $1 + 0 }')"
 printf 'public/assets total: %s bytes\n' "$total_bytes"
-if (( total_bytes > 7 * 1024 * 1024 )); then
-  printf 'public/assets exceeds the 7 MiB target\n' >&2
+if (( total_bytes > 20 * 1024 * 1024 )); then
+  printf 'public/assets exceeds the 20 MiB target\n' >&2
 fi

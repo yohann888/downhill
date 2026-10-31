@@ -9,7 +9,8 @@ import { buildWorld } from './render/world.js';
 import { createRiderModel } from './render/rider.js';
 import { createDust } from './render/dust.js';
 import { createAudio } from './audio.js';
-import { loadModels } from './render/assets.js';
+import { parseYouTubeId } from './youtube.js';
+import { loadModel, loadModels } from './render/assets.js';
 import { createPost } from './render/post.js';
 import {
   airTimeBonus,
@@ -20,6 +21,12 @@ import {
 import { getCommentary, getLeaderboard, postRun } from './api.js';
 import { buildRankOverlayRows, cleanText, rivalLine } from './leaderboard.js';
 import { createRecorder, sampleGhost } from './ghost.js';
+import { getEditableKeyboardTarget } from './keyboard.js';
+import {
+  loadRiderPreference,
+  RIDER_OPTIONS,
+  saveRiderPreference,
+} from './rider-preference.js';
 
 const CRASH_PENALTY = 3;
 const RESPAWN_DELAY = 1.6;
@@ -72,6 +79,10 @@ let leaderboardRequestId = 0;
 let commentaryTimeout;
 const dust = createDust(scene, terrain);
 const audio = createAudio();
+let selectedRider = loadRiderPreference();
+let baseModels = null;
+let riderLoadVersion = 0;
+const backPrintPromise = new THREE.TextureLoader().loadAsync('./assets/otter-back.png');
 
 const ui = {
   speed: document.getElementById('speed'),
@@ -117,8 +128,197 @@ const ui = {
 };
 ui.mute.textContent = audio.muted ? 'Sound off' : 'Sound on';
 const menuMusic = document.getElementById('menu-music');
+const youtubeControls = document.getElementById('youtube-music-controls');
+const youtubeLink = document.getElementById('youtube-link');
+const youtubePlay = document.getElementById('youtube-play');
+const youtubeMessage = document.getElementById('youtube-message');
+const youtubeContainer = document.getElementById('youtube-player-container');
+const youtubePlayerSlot = document.getElementById('youtube-player-slot');
+let youtubePlayer = null;
+let youtubeApiPromise = null;
+let youtubeReadyPromise = null;
+let youtubePlayerReady = false;
+let youtubeRequested = false;
+let youtubeErrorActive = false;
+
+function loadYouTubeApi() {
+  if (window.YT?.Player) return Promise.resolve();
+  if (youtubeApiPromise) return youtubeApiPromise;
+  youtubeApiPromise = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://www.youtube.com/iframe_api';
+    script.onerror = reject;
+    window.onYouTubeIframeAPIReady = () => resolve();
+    document.head.append(script);
+  }).catch((error) => {
+    youtubeApiPromise = null;
+    throw error;
+  });
+  return youtubeApiPromise;
+}
+
+function positionYouTubeMenu() {
+  if (!youtubeContainer.classList.contains('yt-menu')) return;
+  const bounds = youtubePlayerSlot.getBoundingClientRect();
+  const left = Math.max(0, Math.min(window.innerWidth - 204, bounds.left + (bounds.width - 204) / 2));
+  const top = Math.max(0, Math.min(window.innerHeight - 117, bounds.top));
+  youtubeContainer.style.setProperty('--yt-menu-left', `${left}px`);
+  youtubeContainer.style.setProperty('--yt-menu-top', `${top}px`);
+}
+
+function fallbackFromYouTube(message) {
+  const previousMusic = audio.previousMusic;
+  const fallback = previousMusic.youtubeOnly ? audio.tracks[0] : previousMusic;
+  youtubeErrorActive = true;
+  youtubeRequested = false;
+  youtubePlayer?.pauseVideo();
+  youtubeMessage.textContent = `${message} Playing ${fallback.label} instead.`;
+  if (audio.music.id === 'youtube') {
+    audio.setMusic(fallback.id);
+    syncMusicUi();
+  }
+}
+
+function syncYouTubeUi() {
+  const active = audio.music.id === 'youtube';
+  const menuVisible = ui.overlay.classList.contains('start') && !ui.overlay.classList.contains('hidden');
+  const menuPlayer = active && menuVisible;
+  youtubeContainer.classList.toggle('yt-menu', menuPlayer);
+  youtubeContainer.classList.toggle('yt-ride', active && !menuVisible);
+  youtubePlayerSlot.classList.toggle('yt-menu-active', menuPlayer);
+  youtubeControls.hidden = !active && !youtubeErrorActive;
+  youtubeContainer.hidden = !active;
+  if (active && !parseYouTubeId(localStorage.getItem('downhill.youtube-link'))) {
+    fallbackFromYouTube('No valid saved YouTube link.');
+    return;
+  }
+  if (menuPlayer) {
+    const revealPlayer = () => {
+      positionYouTubeMenu();
+      const panel = ui.overlay.querySelector('.panel');
+      if (getComputedStyle(panel).overflowY !== 'auto') return;
+      const playerBounds = youtubeContainer.getBoundingClientRect();
+      const panelBounds = panel.getBoundingClientRect();
+      if (playerBounds.bottom > panelBounds.bottom) panel.scrollTop += playerBounds.bottom - panelBounds.bottom;
+      else if (playerBounds.top < panelBounds.top) panel.scrollTop -= panelBounds.top - playerBounds.top;
+    };
+    requestAnimationFrame(revealPlayer);
+    void document.fonts.ready.then(revealPlayer);
+  }
+  if (!active) {
+    youtubeRequested = false;
+    youtubePlayer?.pauseVideo();
+    audio.setYouTubePlaying(false);
+    return;
+  }
+  youtubeLink.value = localStorage.getItem('downhill.youtube-link') || '';
+  youtubePlay.disabled = !youtubePlayerReady;
+  void loadYouTubeApi().then(() => {
+    if (youtubePlayer) return;
+    youtubeReadyPromise = new Promise((resolve) => {
+      youtubePlayer = new window.YT.Player('youtube-player', {
+        width: 200,
+        height: 113,
+        videoId: '',
+        playerVars: { playsinline: 1, rel: 0 },
+        events: {
+          onReady: () => {
+            youtubePlayer.setVolume(Math.round(audio.volume * 100));
+            youtubePlayerReady = true;
+            youtubePlay.disabled = false;
+            resolve();
+          },
+          onStateChange: (event) => {
+            const playing = event.data === window.YT.PlayerState.PLAYING;
+            audio.setYouTubePlaying(playing);
+            if (event.data === window.YT.PlayerState.ENDED) {
+              youtubePlayer.seekTo(0);
+              if (youtubeRequested && !audio.muted) youtubePlayer.playVideo();
+            }
+          },
+          onError: (event) => {
+            if (event.data !== 101 && event.data !== 150) return;
+            fallbackFromYouTube("This video can't be embedded. Try another link.");
+          },
+        },
+      });
+    });
+  }).catch(() => {
+    fallbackFromYouTube('YouTube is unavailable.');
+  });
+}
+
+ui.overlay.querySelector('.panel').addEventListener('scroll', positionYouTubeMenu, { passive: true });
+window.addEventListener('resize', positionYouTubeMenu);
+
+async function playYouTubeLink() {
+  const link = youtubeLink.value.trim();
+  const id = parseYouTubeId(link);
+  if (!id) {
+    youtubeMessage.textContent = 'Enter a valid YouTube link.';
+    return false;
+  }
+  localStorage.setItem('downhill.youtube-link', link);
+  youtubeErrorActive = false;
+  youtubeMessage.textContent = '';
+  youtubeRequested = true;
+  if (audio.music.id !== 'youtube') {
+    audio.setMusic('youtube');
+    syncMusicUi();
+  } else {
+    syncYouTubeUi();
+  }
+  try {
+    await loadYouTubeApi();
+    if (youtubeReadyPromise) await youtubeReadyPromise;
+    if (audio.muted) return true;
+    if (youtubePlayer?.loadVideoById) {
+      youtubePlayer.loadVideoById(id);
+      youtubePlayer.playVideo();
+      youtubePlayer.setVolume(Math.round(audio.volume * 100));
+    }
+    return true;
+  } catch {
+    fallbackFromYouTube('YouTube is unavailable.');
+    return false;
+  }
+}
+
+youtubePlay.addEventListener('click', () => { void playYouTubeLink(); });
+const menuRider = document.querySelector('#menu-rider .rider-options');
+const riderButtons = new Map();
+function syncRiderUi(loading = false) {
+  for (const [id, button] of riderButtons) {
+    button.setAttribute('aria-pressed', String(id === selectedRider));
+    button.disabled = loading;
+  }
+}
+for (const option of RIDER_OPTIONS) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'rider-card';
+  button.dataset.rider = option.id;
+  const portrait = document.createElement('img');
+  portrait.src = `./assets/rider-${option.id}.png`;
+  portrait.alt = '';
+  const label = document.createElement('span');
+  label.textContent = option.label;
+  button.append(portrait, label);
+  button.addEventListener('click', async () => {
+    selectedRider = saveRiderPreference(option.id);
+    syncRiderUi(true);
+    await applySelectedRider();
+    button.blur();
+  });
+  riderButtons.set(option.id, button);
+  menuRider.append(button);
+}
+syncRiderUi();
 function syncMusicUi() {
   ui.music.textContent = `Music: ${audio.music.label}`;
+  audio.setRain(audio.music.id === 'music-rain');
+  world.setRain(audio.music.id === 'music-rain', initialQuality >= 2);
+  syncYouTubeUi();
   for (const button of menuMusic.querySelectorAll('button')) {
     button.setAttribute('aria-pressed', String(button.dataset.track === audio.music.id));
   }
@@ -129,6 +329,12 @@ for (const track of audio.tracks) {
   button.dataset.track = track.id;
   button.textContent = track.label;
   button.addEventListener('click', () => {
+    youtubeErrorActive = false;
+    youtubeMessage.textContent = '';
+    if (track.id !== 'youtube') {
+      youtubeRequested = false;
+      youtubePlayer?.pauseVideo();
+    }
     audio.setMusic(track.id);
     syncMusicUi();
     button.blur();
@@ -144,8 +350,16 @@ for (const checkpoint of terrain.checkpoints) {
   mark.style.left = `${progress * 100}%`;
   ui.checkpointMarks.append(mark);
 }
-ui.mute.addEventListener('click', () => { ui.mute.textContent = audio.toggleMute() ? 'Sound off' : 'Sound on'; ui.mute.blur(); });
+ui.mute.addEventListener('click', () => {
+  const muted = audio.toggleMute();
+  ui.mute.textContent = muted ? 'Sound off' : 'Sound on';
+  if (muted) youtubePlayer?.pauseVideo();
+  else if (youtubeRequested && audio.music.id === 'youtube') youtubePlayer?.playVideo();
+  ui.mute.blur();
+});
 ui.music.addEventListener('click', () => {
+  youtubeErrorActive = false;
+  youtubeMessage.textContent = '';
   audio.nextMusic();
   syncMusicUi();
   ui.music.blur();
@@ -163,7 +377,10 @@ ui.timeToggle.addEventListener('click', () => {
 });
 setTimeMode(timeMode, false);
 ui.volume.value = String(audio.volume);
-ui.volume.addEventListener('input', () => audio.setVolume(Number(ui.volume.value)));
+ui.volume.addEventListener('input', () => {
+  audio.setVolume(Number(ui.volume.value));
+  youtubePlayer?.setVolume(Math.round(audio.volume * 100));
+});
 
 const keys = { left: false, right: false, throttle: false, brake: false, jump: false };
 let jumpQueued = false;
@@ -181,6 +398,14 @@ const KEYMAP = {
   KeyW: 'throttle', ArrowUp: 'throttle', KeyS: 'brake', ArrowDown: 'brake',
 };
 window.addEventListener('keydown', (e) => {
+  const editableTarget = getEditableKeyboardTarget(e.target, document.activeElement);
+  if (editableTarget) {
+    if (e.code === 'Escape') {
+      e.preventDefault();
+      editableTarget.blur?.();
+    }
+    return;
+  }
   if (e.code === 'Escape' && !ui.leaderboardOverlay.hidden) {
     e.preventDefault();
     closeLeaderboard();
@@ -191,7 +416,6 @@ window.addEventListener('keydown', (e) => {
     showMenu();
     return;
   }
-  if (e.target === ui.nameInput) return;
   if (e.code === 'KeyB' && !e.repeat) {
     e.preventDefault();
     if (ui.leaderboardOverlay.hidden) openLeaderboard();
@@ -229,7 +453,9 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'Enter' && game.mode === 'finished' && e.target !== ui.nameInput) {
     e.preventDefault();
     submitRun();
-  } else if (e.code === 'Enter' && game.mode !== 'riding' && game.mode !== 'finished') start();
+    } else if (e.code === 'Enter' && youtubeControls.contains(e.target)) {
+      e.preventDefault();
+    } else if (e.code === 'Enter' && game.mode !== 'riding' && game.mode !== 'finished') start();
   if (e.code === 'KeyR' && game.mode === 'riding') respawn(true);
   if (e.code === 'KeyM') ui.mute.click();
 });
@@ -343,6 +569,9 @@ function startPose() {
 function start() {
   if (game.waveMode) endWave();
   closeLeaderboard(false);
+  if (audio.music.id === 'youtube' && parseYouTubeId(localStorage.getItem('downhill.youtube-link'))) {
+    void playYouTubeLink();
+  }
   audio.unlock().then(() => audio.event('start'));
   const p = startPose();
   placeBike(p.x, p.z, p.heading, 0);
@@ -384,6 +613,7 @@ function start() {
   ui.hud.classList.remove('wave-mode');
   ui.touch.hidden = false;
   ui.overlay.classList.add('hidden');
+  syncYouTubeUi();
   snapCamera();
 }
 
@@ -943,6 +1173,7 @@ function showMenu() {
   ui.button.textContent = 'Press start';
   ui.overlay.classList.add('start');
   ui.overlay.classList.remove('hidden');
+  syncYouTubeUi();
   ui.flash.classList.remove('show');
   ui.subtitle.classList.remove('show');
   snapCamera();
@@ -1181,7 +1412,7 @@ function frame(now) {
     ghostModel.root.visible = false;
   }
   world.followSun(model.root.position);
-  world.update(game.time);
+  world.update(game.time, camera.position, game.bike.v, game.quality >= 2);
   dust.update(game.bike, game.mode === 'riding', dt);
   audio.update(game.bike, input, game.mode === 'riding', dt, game.timeScale);
   updateCamera(dt);
@@ -1202,39 +1433,61 @@ const p = startPose();
 placeBike(p.x, p.z, p.heading, 0);
 snapCamera();
 const modelNames = ['rider-body', 'bike-frame', 'bike-wheel', 'boulder', 'rock-flat', 'stump', 'log', 'pine-a', 'pine-b', 'otter'];
+function clonedAsset(gltf, skeleton = false) {
+  return {
+    ...gltf,
+    scene: skeleton ? cloneSkeleton(gltf.scene) : gltf.scene.clone(true),
+  };
+}
+
+async function applySelectedRider() {
+  if (!baseModels?.['rider-body'] || !baseModels['bike-frame'] || !baseModels['bike-wheel']) {
+    syncRiderUi(false);
+    return false;
+  }
+  const version = ++riderLoadVersion;
+  syncRiderUi(true);
+  let chosen = null;
+  let chosenId = `rider-${selectedRider}`;
+  try {
+    chosen = await loadModel(chosenId);
+  } catch {
+    chosen = baseModels['rider-body'];
+    chosenId = 'rider-body';
+  }
+  const backPrint = selectedRider === 'red' ? await backPrintPromise.catch(() => null) : null;
+  if (version !== riderLoadVersion) return false;
+  const riderApplied = model.setAssets({
+    riderBody: clonedAsset(chosen, true),
+    bikeFrame: clonedAsset(baseModels['bike-frame']),
+    bikeWheel: clonedAsset(baseModels['bike-wheel']),
+    backPrint,
+    riderId: chosenId,
+  });
+  ghostAssetsReady = Boolean(riderApplied && ghostModel.setAssets({
+    riderBody: clonedAsset(chosen, true),
+    bikeFrame: clonedAsset(baseModels['bike-frame']),
+    bikeWheel: clonedAsset(baseModels['bike-wheel']),
+    backPrint,
+    riderId: chosenId,
+  }));
+  if (ghostAssetsReady) tintGhost();
+  game.ghostAssetsReady = ghostAssetsReady;
+  assetsReady = Boolean(riderApplied);
+  game.assetsReady = assetsReady;
+  syncRiderUi(false);
+  return riderApplied;
+}
 if (debug) {
   game.assetStatus = { state: 'loading', loaded: [], missing: [] };
   window.__assetLoadErrors = {};
   window.__riderModel = model;
 }
-loadModels(modelNames).then((models) => {
+loadModels(modelNames).then(async (models) => {
   if (debug) window.__models = models;
-  const riderApplied = models['rider-body'] && models['bike-frame'] && models['bike-wheel']
-    ? model.setAssets({
-      riderBody: models['rider-body'],
-      bikeFrame: models['bike-frame'],
-      bikeWheel: models['bike-wheel'],
-    })
-    : false;
-  ghostAssetsReady = Boolean(riderApplied && ghostModel.setAssets({
-    riderBody: {
-      ...models['rider-body'],
-      scene: cloneSkeleton(models['rider-body'].scene),
-    },
-    bikeFrame: {
-      ...models['bike-frame'],
-      scene: models['bike-frame'].scene.clone(true),
-    },
-    bikeWheel: {
-      ...models['bike-wheel'],
-      scene: models['bike-wheel'].scene.clone(true),
-    },
-  }));
-  if (ghostAssetsReady) tintGhost();
-  game.ghostAssetsReady = ghostAssetsReady;
+  baseModels = models;
   world.applyModels(models);
-  assetsReady = Boolean(riderApplied);
-  game.assetsReady = assetsReady;
+  const riderApplied = await applySelectedRider();
   qualityWindowElapsed = 0;
   qualityFrameCount = 0;
   if (debug) {

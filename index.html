@@ -67,7 +67,17 @@
               </ul>
             </section>
           </div>
+          <div id="menu-rider" class="menu-rider" aria-label="Choose your rider">
+            <span>Choose your rider</span>
+            <div class="rider-options"></div>
+          </div>
           <div id="menu-music" class="menu-music" aria-label="Music"><span>Music</span></div>
+          <div id="youtube-music-controls" hidden>
+            <input id="youtube-link" type="url" placeholder="Paste a YouTube link" aria-label="Paste a YouTube link" />
+            <button id="youtube-play" type="button">Play</button>
+            <span id="youtube-message" role="status"></span>
+          </div>
+          <div id="youtube-player-slot"></div>
           <button id="leaderboard-open-title" class="leaderboard-open" type="button">Leaderboard</button>
         </div>
         <h1 id="overlay-title">Downhill</h1>
@@ -86,6 +96,7 @@
         <p class="production-credits">3D models by <a href="https://www.meshy.ai" target="_blank" rel="noopener">Meshy</a> &middot; Music, sound and voice by <a href="https://elevenlabs.io" target="_blank" rel="noopener">ElevenLabs</a> &middot; Rider and sky by <a href="https://rosebud.ai" target="_blank" rel="noopener">Rosebud AI</a> &middot; Leaderboard and AI commentary on <a href="https://modal.com" target="_blank" rel="noopener">Modal</a> &middot; &copy; 2026 Aloomii</p>
       </div>
     </div>
+    <div id="youtube-player-container" hidden><div id="youtube-player"></div></div>
     <div id="commentary-subtitle" aria-live="polite"></div>
     <section id="wave-panel" hidden aria-label="Submitted score ranks">
       <h2>Leaderboard</h2>

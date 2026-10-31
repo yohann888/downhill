@@ -1,3 +1,5 @@
+import { parseYouTubeId } from './youtube.js';
+
 const BASE = './assets/audio/';
 const LOOPS = ['tire-gravel-loop', 'wind-loop', 'freewheel-loop', 'pedal-loop', 'forest-loop', 'brake-skid'];
 const ONESHOTS = ['crash', 'otter-hit', 'land', 'checkpoint', 'finish-cheer', 'vo-go', 'vo-clean', 'vo-air', 'vo-crash', 'vo-ottified', 'vo-checkpoint', 'vo-best', 'vo-send'];
@@ -5,14 +7,25 @@ const MUSIC_TRACKS = [
   { id: 'music-ride', label: 'Space trance' },
   { id: 'music-lofi', label: 'Lo-fi' },
   { id: 'music-punk', label: 'Punk' },
+  { id: 'music-rain', label: 'Rain' },
+  { id: 'music-synthwave', label: 'Synthwave' },
+  { id: 'youtube', label: 'YouTube', youtubeOnly: true },
 ];
 const clamp01 = (value) => Math.min(1, Math.max(0, value));
+
+export function getMusicGainTarget(target, { muted, selectedMusic, youtubePlaying }) {
+  return muted || (selectedMusic === 'youtube' && youtubePlaying) ? 0 : target;
+}
 
 export function createAudio() {
   let ctx = null;
   let master = null;
   let musicGain = null;
   let musicSource = null;
+  let rainNodes = null;
+  let rainSelected = false;
+  let previousMusic = 'music-ride';
+  let youtubePlaying = false;
   let voiceSource = null;
   const buffers = {};
   const loops = {};
@@ -47,6 +60,7 @@ export function createAudio() {
   }
 
   async function switchMusic(name, version) {
+    if (name === 'youtube') return;
     const buffer = await load(name);
     if (!buffer || !ctx || version !== musicSelectionVersion || name !== selectedMusic) return;
     const now = ctx.currentTime;
@@ -60,7 +74,6 @@ export function createAudio() {
     gain.gain.setValueAtTime(0, now);
     source.connect(gain).connect(master);
     source.start(now);
-    gain.gain.linearRampToValueAtTime(voiceSource ? 0.1 : 0.25, now + 0.5);
     if (previousGain && previousSource) {
       previousGain.gain.cancelScheduledValues(now);
       previousGain.gain.setValueAtTime(previousGain.gain.value, now);
@@ -69,6 +82,13 @@ export function createAudio() {
     }
     musicSource = source;
     musicGain = gain;
+    setMusicGain(voiceSource ? 0.1 : 0.25, 0.08);
+  }
+
+  function setMusicGain(target = voiceSource ? 0.1 : 0.25, timeConstant = 0.08) {
+    if (!musicGain || !ctx) return;
+    const gain = getMusicGainTarget(target, { muted, selectedMusic, youtubePlaying });
+    musicGain.gain.setTargetAtTime(gain, ctx.currentTime, timeConstant);
   }
 
   function startLoop(name, gainValue = 0) {
@@ -141,12 +161,40 @@ export function createAudio() {
     });
   }
 
+  function createRainNoise() {
+    const buffer = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+    const channel = buffer.getChannelData(0);
+    for (let index = 0; index < channel.length; index += 1) {
+      channel[index] = Math.random() * 2 - 1;
+    }
+    const highSource = ctx.createBufferSource();
+    highSource.buffer = buffer;
+    highSource.loop = true;
+    const bandpass = ctx.createBiquadFilter();
+    bandpass.type = 'bandpass';
+    bandpass.frequency.value = 4300;
+    bandpass.Q.value = 0.45;
+    const highGain = ctx.createGain();
+    highGain.gain.value = 0;
+    highSource.connect(bandpass).connect(highGain).connect(master);
+    highSource.start();
+    const lowSource = ctx.createBufferSource();
+    lowSource.buffer = buffer;
+    lowSource.loop = true;
+    const lowpass = ctx.createBiquadFilter();
+    lowpass.type = 'lowpass';
+    lowpass.frequency.value = 150;
+    const lowGain = ctx.createGain();
+    lowGain.gain.value = 0;
+    lowSource.connect(lowpass).connect(lowGain).connect(master);
+    lowSource.start();
+    rainNodes = { highGain, lowGain };
+  }
+
   async function playCommentary(base64) {
     if (!ctx || !master || !base64) return false;
     let source = null;
-    const restoreMusic = () => {
-      if (musicGain) musicGain.gain.setTargetAtTime(0.25, ctx.currentTime, 0.08);
-    };
+    const restoreMusic = () => setMusicGain();
     try {
       const bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
       const buffer = await ctx.decodeAudioData(bytes.buffer);
@@ -157,7 +205,7 @@ export function createAudio() {
       source.buffer = buffer;
       voiceSource = source;
       source.connect(master);
-      if (musicGain) musicGain.gain.setTargetAtTime(0.1, ctx.currentTime, 0.08);
+      setMusicGain(0.1);
       source.addEventListener('ended', () => {
         if (voiceSource === source) {
           voiceSource = null;
@@ -181,6 +229,7 @@ export function createAudio() {
       master = ctx.createGain();
       master.gain.value = muted ? 0 : volume;
       master.connect(ctx.destination);
+      createRainNoise();
       await Promise.all([...LOOPS, ...ONESHOTS].map(load));
       for (const name of LOOPS) startLoop(name);
       setLoop('forest-loop', 0.35);
@@ -193,24 +242,42 @@ export function createAudio() {
     get music() {
       return MUSIC_TRACKS.find((track) => track.id === selectedMusic);
     },
+    get previousMusic() {
+      return MUSIC_TRACKS.find((track) => track.id === previousMusic) || MUSIC_TRACKS[0];
+    },
     tracks: MUSIC_TRACKS,
     nextMusic() {
-      const index = MUSIC_TRACKS.findIndex((track) => track.id === selectedMusic);
-      return this.setMusic(MUSIC_TRACKS[(index + 1) % MUSIC_TRACKS.length].id);
+      const tracks = MUSIC_TRACKS.filter((track) => !track.youtubeOnly || parseYouTubeId(localStorage.getItem('downhill.youtube-link')));
+      const availableIndex = tracks.findIndex((track) => track.id === selectedMusic);
+      return this.setMusic(tracks[(availableIndex + 1) % tracks.length].id);
     },
     setMusic(id) {
       if (!MUSIC_TRACKS.some((track) => track.id === id)) return this.music;
       if (id === selectedMusic) return this.music;
+      if (selectedMusic !== 'youtube') previousMusic = selectedMusic;
       selectedMusic = id;
+      if (id !== 'youtube') youtubePlaying = false;
+      rainSelected = id === 'music-rain';
       localStorage.setItem('downhill.music', selectedMusic);
       musicSelectionVersion += 1;
       if (ctx) void switchMusic(selectedMusic, musicSelectionVersion);
+      if (musicGain && id === 'youtube') {
+        setMusicGain();
+      }
       return MUSIC_TRACKS.find((track) => track.id === selectedMusic);
+    },
+    setYouTubePlaying(playing) {
+      youtubePlaying = Boolean(playing);
+      if (selectedMusic === 'youtube') setMusicGain();
+    },
+    setRain(active) {
+      rainSelected = Boolean(active) && selectedMusic === 'music-rain';
     },
     toggleMute() {
       muted = !muted;
       localStorage.setItem('downhill-muted', muted ? '1' : '0');
       if (master) master.gain.setTargetAtTime(muted ? 0 : volume, ctx.currentTime, 0.05);
+      setMusicGain();
       return muted;
     },
     setVolume(next) {
@@ -228,6 +295,11 @@ export function createAudio() {
       const playbackRateScale = timeScale < 0.999 ? 0.85 : 1;
       const rate = (base) => base * playbackRateScale;
       musicRateScale = playbackRateScale;
+      if (rainNodes) {
+        const rainVolume = rainSelected && riding ? 0.08 : 0;
+        rainNodes.highGain.gain.setTargetAtTime(rainVolume * 0.78, ctx.currentTime, 0.15);
+        rainNodes.lowGain.gain.setTargetAtTime(rainVolume * 0.22, ctx.currentTime, 0.15);
+      }
       if (musicSource) {
         musicSource.playbackRate.setTargetAtTime(playbackRateScale, ctx.currentTime, 0.1);
       }
