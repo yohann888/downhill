@@ -126,7 +126,19 @@ const ui = {
   timeToggle: document.getElementById('time-toggle'),
   volume: document.getElementById('volume'),
 };
-ui.mute.textContent = audio.muted ? 'Sound off' : 'Sound on';
+function syncMuteButton() {
+  const label = audio.muted ? 'Sound off' : 'Sound on';
+  ui.mute.textContent = audio.muted ? '🔇' : '🔊';
+  ui.mute.setAttribute('aria-label', label);
+  ui.mute.title = label;
+}
+function syncTimeButton() {
+  const label = timeMode === 'night' ? 'Night' : 'Day';
+  ui.timeToggle.textContent = timeMode === 'night' ? '☾' : '☼';
+  ui.timeToggle.setAttribute('aria-label', label);
+  ui.timeToggle.title = label;
+}
+syncMuteButton();
 const menuMusic = document.getElementById('menu-music');
 const youtubeControls = document.getElementById('youtube-music-controls');
 const youtubeLink = document.getElementById('youtube-link');
@@ -315,7 +327,10 @@ for (const option of RIDER_OPTIONS) {
 }
 syncRiderUi();
 function syncMusicUi() {
-  ui.music.textContent = `Music: ${audio.music.label}`;
+  const label = `Music: ${audio.music.label}`;
+  ui.music.textContent = '♫';
+  ui.music.setAttribute('aria-label', label);
+  ui.music.title = label;
   audio.setRain(audio.music.id === 'music-rain');
   world.setRain(audio.music.id === 'music-rain', initialQuality >= 2);
   syncYouTubeUi();
@@ -342,7 +357,7 @@ for (const track of audio.tracks) {
   menuMusic.append(button);
 }
 syncMusicUi();
-ui.timeToggle.textContent = timeMode === 'night' ? 'Night' : 'Day';
+syncTimeButton();
 for (const checkpoint of terrain.checkpoints) {
   const mark = document.createElement('span');
   const progress = Math.max(0, Math.min(1, -checkpoint.z / terrain.courseLength));
@@ -352,7 +367,7 @@ for (const checkpoint of terrain.checkpoints) {
 }
 ui.mute.addEventListener('click', () => {
   const muted = audio.toggleMute();
-  ui.mute.textContent = muted ? 'Sound off' : 'Sound on';
+  syncMuteButton();
   if (muted) youtubePlayer?.pauseVideo();
   else if (youtubeRequested && audio.music.id === 'youtube') youtubePlayer?.playVideo();
   ui.mute.blur();
@@ -368,7 +383,7 @@ function setTimeMode(mode, persist = true) {
   timeMode = mode === 'night' ? 'night' : 'day';
   world.setTimeOfDay(timeMode);
   model.setHeadlamp(timeMode === 'night');
-  ui.timeToggle.textContent = timeMode === 'night' ? 'Night' : 'Day';
+  syncTimeButton();
   if (persist) localStorage.setItem('downhill.time', timeMode);
 }
 ui.timeToggle.addEventListener('click', () => {
