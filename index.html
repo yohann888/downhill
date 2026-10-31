@@ -30,6 +30,7 @@
         <span id="energy-timer" class="pickup-timer energy-timer" hidden></span>
       </div>
       <div id="flash"></div>
+      <div id="photo-flash" aria-hidden="true"></div>
       <a id="brand-badge" class="devin-badge devin-badge-hud" href="https://devin.ai" target="_blank" rel="noopener"><img class="devin-logo-mark" src="./assets/devin-logo.svg" alt="Devin logo"><img class="devin-otter" src="./assets/otter-logo.png" alt=""><span>BUILT WITH DEVIN</span></a>
       <div id="audio-controls">
         <button id="mute" type="button">
@@ -50,6 +51,12 @@
           <span class="hud-icon" aria-hidden="true">
             <svg class="icon-day" viewBox="0 0 24 24" focusable="false"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"/></svg>
             <svg class="icon-night" viewBox="0 0 24 24" focusable="false"><path d="M20.5 15.5A8.5 8.5 0 0 1 8.5 3.5 8.5 8.5 0 1 0 20.5 15.5Z"/></svg>
+          </span>
+        </button>
+        <button id="photo-button" type="button" aria-label="Photo" title="Photo" hidden>
+          <span class="hud-label">Photo</span>
+          <span class="hud-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" focusable="false"><path d="M4 7h3l1.5-2h7L17 7h3a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2Z"/><circle cx="12" cy="13" r="3.5"/></svg>
           </span>
         </button>
       </div>

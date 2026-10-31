@@ -22,6 +22,7 @@ import { getCommentary, getLeaderboard, postRun } from './api.js';
 import { buildRankOverlayRows, cleanText, rivalLine } from './leaderboard.js';
 import { createRecorder, sampleGhost } from './ghost.js';
 import { getEditableKeyboardTarget } from './keyboard.js';
+import { savePhoto } from './photo.js';
 import {
   loadRiderPreference,
   RIDER_OPTIONS,
@@ -87,6 +88,7 @@ const backPrintPromise = new THREE.TextureLoader().loadAsync('./assets/otter-bac
 const ui = {
   speed: document.getElementById('speed'),
   timer: document.getElementById('timer'),
+  photoFlash: document.getElementById('photo-flash'),
   coffeeTimer: document.getElementById('coffee-timer'),
   energyTimer: document.getElementById('energy-timer'),
   progress: document.getElementById('progress-fill'),
@@ -124,6 +126,7 @@ const ui = {
   mute: document.getElementById('mute'),
   music: document.getElementById('music-select'),
   timeToggle: document.getElementById('time-toggle'),
+  photo: document.getElementById('photo-button'),
   volume: document.getElementById('volume'),
 };
 function syncMuteButton() {
@@ -142,6 +145,7 @@ function syncHudButton(button, label) {
   button.title = label;
 }
 syncMuteButton();
+syncHudButton(ui.photo, 'Photo');
 const menuMusic = document.getElementById('menu-music');
 const youtubeControls = document.getElementById('youtube-music-controls');
 const youtubeLink = document.getElementById('youtube-link');
@@ -397,6 +401,10 @@ ui.timeToggle.addEventListener('click', () => {
   setTimeMode(timeMode === 'night' ? 'day' : 'night');
   ui.timeToggle.blur();
 });
+ui.photo.addEventListener('click', () => {
+  void takePhoto();
+  ui.photo.blur();
+});
 setTimeMode(timeMode, false);
 ui.volume.value = String(audio.volume);
 ui.volume.addEventListener('input', () => {
@@ -458,6 +466,11 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyL' && !e.repeat) {
     ui.timeToggle.click();
     e.preventDefault();
+  }
+  if (e.code === 'KeyC' && !e.repeat && (game.mode === 'riding' || game.mode === 'paused')) {
+    e.preventDefault();
+    void takePhoto();
+    return;
   }
   if (game.waveMode) {
     if (e.code === 'Enter' || e.code === 'KeyR') start();
@@ -663,6 +676,130 @@ function flash(text, ms = 1200) {
   ui.flash.classList.add('show');
   clearTimeout(flashTimeout);
   flashTimeout = setTimeout(() => ui.flash.classList.remove('show'), ms);
+}
+
+let photoInProgress = false;
+
+function flashPhoto() {
+  ui.photoFlash.classList.remove('show');
+  void ui.photoFlash.offsetWidth;
+  ui.photoFlash.classList.add('show');
+  setTimeout(() => ui.photoFlash.classList.remove('show'), 150);
+}
+
+function drawRoundedRect(context, x, y, width, height, radius) {
+  context.beginPath();
+  context.moveTo(x + radius, y);
+  context.lineTo(x + width - radius, y);
+  context.quadraticCurveTo(x + width, y, x + width, y + radius);
+  context.lineTo(x + width, y + height - radius);
+  context.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+  context.lineTo(x + radius, y + height);
+  context.quadraticCurveTo(x, y + height, x, y + height - radius);
+  context.lineTo(x, y + radius);
+  context.quadraticCurveTo(x, y, x + radius, y);
+  context.closePath();
+}
+
+async function takePhoto() {
+  if ((game.mode !== 'riding' && game.mode !== 'paused') || photoInProgress) return;
+  photoInProgress = true;
+  try {
+    renderCurrentFrame();
+    const photoCanvas = document.createElement('canvas');
+    photoCanvas.width = renderer.domElement.width;
+    photoCanvas.height = renderer.domElement.height;
+    const context = photoCanvas.getContext('2d');
+    context.drawImage(renderer.domElement, 0, 0);
+    flashPhoto();
+
+    const logo = document.querySelector('#brand-badge .devin-otter');
+    await Promise.all([logo.decode(), document.fonts.load('30px Bungee')]);
+
+    const scaleX = photoCanvas.width / window.innerWidth;
+    const scaleY = photoCanvas.height / window.innerHeight;
+    context.save();
+    context.scale(scaleX, scaleY);
+    context.textBaseline = 'top';
+    context.fillStyle = '#fff';
+    context.shadowColor = 'rgba(255,43,214,.75)';
+    context.shadowBlur = 6;
+    context.shadowOffsetX = 2;
+    context.shadowOffsetY = 2;
+    context.font = '30px Bungee, system-ui, sans-serif';
+    const speed = ui.speed.textContent;
+    context.fillText(speed, 16, 12);
+    const speedWidth = context.measureText(speed).width;
+    context.font = '13px system-ui, sans-serif';
+    context.fillStyle = '#9ff3ff';
+    context.shadowBlur = 0;
+    context.shadowOffsetX = 0;
+    context.shadowOffsetY = 0;
+    context.fillText('km/h', 20 + speedWidth, 25);
+    context.font = '22px Bungee, system-ui, sans-serif';
+    context.fillStyle = '#fff';
+    context.shadowColor = 'rgba(255,43,214,.75)';
+    context.shadowBlur = 6;
+    context.shadowOffsetX = 2;
+    context.shadowOffsetY = 2;
+    context.fillText(`${ui.timer.textContent} s`, 16, 52);
+
+    const watermark = 'Built with Devin · devkick.com/downhill';
+    context.font = '13px Bungee, system-ui, sans-serif';
+    const iconSize = 26;
+    const paddingX = 12;
+    const paddingY = 9;
+    const pillWidth = paddingX * 2 + iconSize + 8 + context.measureText(watermark).width;
+    const pillHeight = iconSize + paddingY * 2;
+    const pillX = window.innerWidth - 16 - pillWidth;
+    const pillY = window.innerHeight - 16 - pillHeight;
+    context.shadowColor = 'rgba(0,0,0,.35)';
+    context.shadowBlur = 12;
+    context.shadowOffsetX = 0;
+    context.shadowOffsetY = 3;
+    drawRoundedRect(context, pillX, pillY, pillWidth, pillHeight, pillHeight / 2);
+    context.fillStyle = 'rgba(8,12,25,.9)';
+    context.fill();
+    context.shadowBlur = 0;
+    context.shadowOffsetY = 0;
+    context.strokeStyle = 'rgba(34,232,255,.8)';
+    context.lineWidth = 1.5;
+    context.stroke();
+    context.save();
+    context.beginPath();
+    context.arc(
+      pillX + paddingX + iconSize / 2,
+      pillY + pillHeight / 2,
+      iconSize / 2,
+      0,
+      Math.PI * 2,
+    );
+    context.clip();
+    context.drawImage(logo, pillX + paddingX, pillY + paddingY, iconSize, iconSize);
+    context.restore();
+    context.fillStyle = '#fff';
+    context.font = '13px Bungee, system-ui, sans-serif';
+    context.textBaseline = 'middle';
+    context.fillText(
+      watermark,
+      pillX + paddingX + iconSize + 8,
+      pillY + pillHeight / 2,
+    );
+    context.restore();
+
+    const blob = await new Promise((resolve, reject) => {
+      photoCanvas.toBlob((result) => {
+        if (result) resolve(result);
+        else reject(new Error('Photo encoding failed'));
+      }, 'image/png');
+    });
+    await savePhoto(blob);
+    flash('Saved', 900);
+  } catch (error) {
+    if (error?.name !== 'AbortError') flash('Could not save photo', 1200);
+  } finally {
+    photoInProgress = false;
+  }
 }
 
 const CRASH_TEXT = {
@@ -1300,7 +1437,9 @@ function tintGhost() {
 
 function updateHud() {
   const b = game.bike;
+  const activeRide = game.mode === 'riding' || game.mode === 'paused';
   touchControls.hidden = game.mode !== 'riding';
+  ui.photo.hidden = !activeRide;
   ui.coffeeTimer.hidden = !(b.boostTime > 0);
   if (b.boostTime > 0) ui.coffeeTimer.textContent = `☕ 2x ${b.boostTime.toFixed(1)}`;
   ui.energyTimer.hidden = !(b.doubleJumpTime > 0);
@@ -1376,6 +1515,11 @@ function updateTimeScale(realDt) {
   game.timeScale += Math.max(-maxChange, Math.min(maxChange, effectiveTarget - game.timeScale));
 }
 
+function renderCurrentFrame() {
+  if (game.quality >= 1) renderer.render(scene, camera);
+  else post.render();
+}
+
 function frame(now) {
   const frameDt = Math.max(0, (now - last) / 1000);
   const dt = Math.min(0.1, frameDt);
@@ -1439,8 +1583,7 @@ function frame(now) {
   audio.update(game.bike, input, game.mode === 'riding', dt, game.timeScale);
   updateCamera(dt);
   updateHud();
-  if (game.quality >= 1) renderer.render(scene, camera);
-  else post.render();
+  renderCurrentFrame();
   requestAnimationFrame(frame);
 }
 
@@ -1537,8 +1680,7 @@ if (debug) {
   window.__captureFrame = (position, target) => {
     camera.position.fromArray(position);
     camera.lookAt(new THREE.Vector3(...target));
-    if (game.quality >= 1) renderer.render(scene, camera);
-    else post.render();
+    renderCurrentFrame();
     return renderer.domElement.toDataURL('image/png');
   };
 }
