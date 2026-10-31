@@ -303,12 +303,21 @@ function buildRangeMesh(terrain, groundTextures) {
 
 function buildTrees(terrain, obstacles) {
   const random = createRandom(41);
+  const variationRandom = createRandom(97);
   const placements = obstacles
     .filter((o) => o.type === 'tree')
-    .map((o) => {
+    .map((o, i) => {
       random();
-      return { x: o.x, z: o.z, scale: o.treeScale ?? 1 };
+      return {
+        x: o.x,
+        z: o.z,
+        scale: o.treeScale ?? 1,
+        variant: o.treeVariant ?? i % 2,
+        yaw: variationRandom() * Math.PI * 2,
+        obstacle: true,
+      };
     });
+  let backgroundIndex = 0;
   for (let s = -30; s <= terrain.courseLength + 50; s += 1.6) {
     const z = -s;
     for (const side of [-1, 1]) {
@@ -319,8 +328,41 @@ function buildTrees(terrain, obstacles) {
         x: terrain.centerX(z) + side * d,
         z: z + (random() - 0.5) * 1.5,
         scale: 0.8 + random() * 0.9,
+        variant: backgroundIndex % 2,
+        yaw: variationRandom() * Math.PI * 2,
+        obstacle: false,
       });
+      backgroundIndex += 1;
     }
+  }
+  const treePalette = [
+    { weight: 0.34, color: new THREE.Color(0.88, 1, 0.9) },
+    { weight: 0.22, color: new THREE.Color(0.78, 0.93, 1.05) },
+    { weight: 0.2, color: new THREE.Color(1.02, 1.06, 0.8) },
+    { weight: 0.18, color: new THREE.Color(1.06, 1, 0.78) },
+    { weight: 0.06, color: new THREE.Color(1.3, 0.86, 0.5) },
+  ];
+  const tintTree = () => {
+    let choice = variationRandom();
+    let selected = treePalette[treePalette.length - 1].color;
+    for (const entry of treePalette) {
+      choice -= entry.weight;
+      if (choice < 0) {
+        selected = entry.color;
+        break;
+      }
+    }
+    return selected.clone().multiplyScalar(0.85 + variationRandom() * 0.25);
+  };
+  for (const tree of placements) {
+    const spire = !tree.obstacle && variationRandom() < 0.12;
+    tree.heightFactor = spire ? 1.45 : 0.85 + variationRandom() * 0.45;
+    tree.widthFactor = spire
+      ? 0.72
+      : tree.obstacle
+        ? 0.92 + variationRandom() * 0.16
+        : 0.85 + variationRandom() * 0.3;
+    tree.tint = tintTree();
   }
   const trunkGeometry = new THREE.CylinderGeometry(0.18, 0.28, 2.2, 6).translate(0, 1.1, 0);
   const foliageGeometry = new THREE.ConeGeometry(1.7, 6.5, 7).translate(0, 5, 0);
@@ -341,35 +383,43 @@ function buildTrees(terrain, obstacles) {
   const color = new THREE.Color();
   placements.forEach((tree, i) => {
     position.set(tree.x, terrain.heightAt(tree.x, tree.z), tree.z);
-    quat.setFromAxisAngle(new THREE.Vector3(0, 1, 0), random() * Math.PI * 2);
-    scale.setScalar(tree.scale);
+    quat.setFromAxisAngle(new THREE.Vector3(0, 1, 0), tree.yaw);
+    scale.set(tree.scale * tree.widthFactor, tree.scale * tree.heightFactor, tree.scale * tree.widthFactor);
     matrix.compose(position, quat, scale);
     trunks.setMatrixAt(i, matrix);
     foliage.setMatrixAt(i, matrix);
-    color.setHSL(0.27 + random() * 0.07, 0.45, 0.16 + random() * 0.08);
+    color.copy(tree.tint);
     foliage.setColorAt(i, color);
   });
+  foliage.instanceColor.needsUpdate = true;
   trunks.castShadow = true;
   foliage.castShadow = true;
   foliage.receiveShadow = true;
   const group = new THREE.Group();
   group.add(trunks, foliage);
-  const yaw = placements.map(() => random() * Math.PI * 2);
   group.userData.swap = (variants) => {
-    const usable = variants.filter(Boolean);
-    if (!usable.length) return;
+    const required = new Set(placements.map((tree) => tree.variant));
+    if ([...required].some((variant) => !variants[variant])) return;
     trunks.visible = false;
     foliage.visible = false;
-    usable.forEach((variant, v) => {
-      const mine = placements.filter((_, i) => i % usable.length === v);
+    variants.forEach((variant, v) => {
+      if (!variant) return;
+      const mine = placements.filter((tree) => tree.variant === v);
+      if (!mine.length) return;
       const mesh = new THREE.InstancedMesh(variant.geometry, variant.material, mine.length);
       mine.forEach((tree, i) => {
         position.set(tree.x, terrain.heightAt(tree.x, tree.z), tree.z);
-        quat.setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw[i]);
-        scale.setScalar(10 * tree.scale);
+        quat.setFromAxisAngle(new THREE.Vector3(0, 1, 0), tree.yaw);
+        scale.set(
+          10 * tree.scale * tree.widthFactor,
+          10 * tree.scale * tree.heightFactor,
+          10 * tree.scale * tree.widthFactor,
+        );
         matrix.compose(position, quat, scale);
         mesh.setMatrixAt(i, matrix);
+        mesh.setColorAt(i, tree.tint);
       });
+      mesh.instanceColor.needsUpdate = true;
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       group.add(mesh);
