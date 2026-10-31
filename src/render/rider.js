@@ -394,7 +394,7 @@ export function createRiderModel() {
     const bikeLongAxis = bikeSize.x > bikeSize.z ? 'x' : 'z';
     const bikeScale = (2 * HALF_BASE) / Math.max(bikeSize.x, bikeSize.z);
     bikeAsset.scale.setScalar(bikeScale);
-    bikeAsset.rotation.y = bikeLongAxis === 'x' ? Math.PI / 2 : Math.PI;
+    bikeAsset.rotation.y = bikeLongAxis === 'x' ? -Math.PI / 2 : 0;
     bikeAsset.position.y = WHEEL_R;
     bikeScene.position.set(-bikeCenter.x, -bikeBox.min.y, -bikeCenter.z);
 
@@ -746,7 +746,7 @@ export function createRiderModel() {
       const gripLocal = crashing
         ? new THREE.Vector3(side * 0.68, 1.2, -0.02)
         : assetRiderMotion.worldToLocal(
-          assetSteer.localToWorld(new THREE.Vector3(side * 0.34, 0.59, 0.08)),
+          assetSteer.localToWorld(new THREE.Vector3(side * 0.215, 0.665, 0.385)),
         );
       const smoothedGrip = stepVectorSpring(handTargets[index], gripLocal, dt, crashing ? 8 : 16);
       const handTarget = assetRiderMotion.localToWorld(smoothedGrip);
