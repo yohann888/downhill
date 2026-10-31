@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js';
-import { createBike, stepBike } from './physics/bike.js';
+import { applyPickup, createBike, stepBike } from './physics/bike.js';
 import { DT } from './physics/constants.js';
 import { createObstacles, updateMovingObstacles } from './world/obstacles.js';
 import { createTerrain } from './world/terrain.js';
+import { createPickups, PICKUP_RADIUS, PICKUP_REACH } from './world/pickups.js';
 import { buildWorld } from './render/world.js';
 import { createRiderModel } from './render/rider.js';
 import { createDust } from './render/dust.js';
@@ -17,7 +18,7 @@ import {
   slowMoTarget,
 } from './feel.js';
 import { getCommentary, getLeaderboard, postRun } from './api.js';
-import { buildRankOverlayRows } from './leaderboard.js';
+import { buildRankOverlayRows, cleanText, rivalLine } from './leaderboard.js';
 import { createRecorder, sampleGhost } from './ghost.js';
 
 const CRASH_PENALTY = 3;
@@ -51,7 +52,8 @@ const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerH
 
 const terrain = createTerrain();
 const obstacles = createObstacles(terrain);
-const world = buildWorld(scene, renderer, terrain, obstacles);
+const pickups = createPickups(terrain, obstacles);
+const world = buildWorld(scene, renderer, terrain, obstacles, pickups);
 const post = queryParams.has('nopost')
   ? { render: () => renderer.render(scene, camera), setSize() {} }
   : createPost(renderer, scene, camera);
@@ -64,6 +66,9 @@ const ghostRecorder = createRecorder();
 let bestGhost = null;
 let ghostAssetsReady = false;
 let leaderboardEntries = [];
+let submittedRank = null;
+let leaderboardReturnFocus = null;
+let leaderboardRequestId = 0;
 let commentaryTimeout;
 const dust = createDust(scene, terrain);
 const audio = createAudio();
@@ -71,6 +76,8 @@ const audio = createAudio();
 const ui = {
   speed: document.getElementById('speed'),
   timer: document.getElementById('timer'),
+  coffeeTimer: document.getElementById('coffee-timer'),
+  energyTimer: document.getElementById('energy-timer'),
   progress: document.getElementById('progress-fill'),
   progressPercent: document.getElementById('progress-percent'),
   checkpointMarks: document.getElementById('checkpoint-marks'),
@@ -87,8 +94,16 @@ const ui = {
   nameInput: document.getElementById('rider-name'),
   submitButton: document.querySelector('#finish-controls button[type="submit"]'),
   finishLeaderboard: document.getElementById('finish-leaderboard'),
+  leaderboardTitle: document.getElementById('leaderboard-open-title'),
+  leaderboardFinish: document.getElementById('leaderboard-open-finish'),
+  leaderboardWave: document.getElementById('leaderboard-open-wave'),
+  leaderboardOverlay: document.getElementById('leaderboard-overlay'),
+  leaderboardClose: document.getElementById('leaderboard-close'),
+  fullLeaderboard: document.getElementById('full-leaderboard-list'),
   wavePanel: document.getElementById('wave-panel'),
   waveLeaderboard: document.getElementById('wave-leaderboard'),
+  waveRivalLine: document.getElementById('wave-rival-line'),
+  waveBadge: document.getElementById('brand-badge-wave'),
   rideAgain: document.getElementById('wave-ride-again'),
   waveMenu: document.getElementById('wave-menu'),
   hud: document.getElementById('hud'),
@@ -166,12 +181,30 @@ const KEYMAP = {
   KeyW: 'throttle', ArrowUp: 'throttle', KeyS: 'brake', ArrowDown: 'brake',
 };
 window.addEventListener('keydown', (e) => {
+  if (e.code === 'Escape' && !ui.leaderboardOverlay.hidden) {
+    e.preventDefault();
+    closeLeaderboard();
+    return;
+  }
   if (e.code === 'Escape' && (game.mode === 'finished' || game.waveMode)) {
     e.preventDefault();
     showMenu();
     return;
   }
   if (e.target === ui.nameInput) return;
+  if (e.code === 'KeyB' && !e.repeat) {
+    e.preventDefault();
+    if (ui.leaderboardOverlay.hidden) openLeaderboard();
+    else closeLeaderboard();
+    return;
+  }
+  if (!ui.leaderboardOverlay.hidden) {
+    if (e.code === 'Enter' || e.code === 'Space') {
+      if (ui.leaderboardOverlay.contains(document.activeElement)) return;
+      e.preventDefault();
+    }
+    return;
+  }
   if (e.code === 'KeyN' && !e.repeat) {
     ui.music.click();
     e.preventDefault();
@@ -227,6 +260,13 @@ ui.finishForm.addEventListener('submit', (event) => {
 ui.rideAgain.addEventListener('click', () => start());
 ui.menuButton.addEventListener('click', () => showMenu());
 ui.waveMenu.addEventListener('click', () => showMenu());
+ui.leaderboardTitle.addEventListener('click', openLeaderboard);
+ui.leaderboardFinish.addEventListener('click', openLeaderboard);
+ui.leaderboardWave.addEventListener('click', openLeaderboard);
+ui.leaderboardClose.addEventListener('click', closeLeaderboard);
+ui.leaderboardOverlay.addEventListener('click', (event) => {
+  if (event.target === ui.leaderboardOverlay) closeLeaderboard();
+});
 
 const readInput = () => ({
   throttle: keys.throttle ? 1 : 0,
@@ -247,6 +287,7 @@ const game = {
   maxSpeed: 0,
   airTime: 0,
   airPeak: 0,
+  airDoubleJumped: false,
   maxAir: 0,
   maxHeight: 0,
   crashes: 0,
@@ -277,6 +318,22 @@ function placeBike(x, z, heading, speed) {
   game.prev = snapshot(game.bike);
 }
 
+function resetPickups() {
+  pickups.forEach((pickup, index) => {
+    pickup.taken = false;
+    world.setPickupVisible(index, true);
+  });
+}
+
+function clearPowerUps(bike = game.bike) {
+  if (!bike) return;
+  bike.boostTime = 0;
+  bike.boostTarget = 0;
+  bike.doubleJumpTime = 0;
+  bike.doubleJumpUsed = false;
+  bike.doubleJumped = false;
+}
+
 function startPose() {
   const z = -6;
   const heading = Math.atan2(terrain.centerX(z - 0.5) - terrain.centerX(z + 0.5), 1);
@@ -285,13 +342,17 @@ function startPose() {
 
 function start() {
   if (game.waveMode) endWave();
+  closeLeaderboard(false);
   audio.unlock().then(() => audio.event('start'));
   const p = startPose();
   placeBike(p.x, p.z, p.heading, 0);
+  resetPickups();
+  clearPowerUps();
   game.mode = 'riding';
   game.time = 0;
   game.airTime = 0;
   game.airPeak = 0;
+  game.airDoubleJumped = false;
   updateMovingObstacles(obstacles, 0);
   world.update(0);
   game.penalty = 0;
@@ -305,6 +366,7 @@ function start() {
   game.runId += 1;
   game.runSubmitted = false;
   game.runSubmitting = false;
+  submittedRank = null;
   game.leaderboardWarmed = false;
   ghostRecorder.reset();
   game.timeScale = 1;
@@ -317,6 +379,7 @@ function start() {
   ui.submitButton.textContent = 'Submit';
   ui.finishLeaderboard.hidden = true;
   ui.finishLeaderboard.replaceChildren();
+  ui.leaderboardFinish.hidden = true;
   ui.wavePanel.hidden = true;
   ui.hud.classList.remove('wave-mode');
   ui.touch.hidden = false;
@@ -328,7 +391,10 @@ function respawn(manual) {
   if (manual && game.mode === 'riding') game.penalty += CRASH_PENALTY;
   const cp = terrain.checkpoints[game.checkpoint];
   const p = cp ? { x: cp.x, z: cp.z, heading: cp.heading } : startPose();
+  const doubleJumpTime = game.bike?.doubleJumpTime ?? 0;
   placeBike(p.x, p.z, p.heading, cp ? 5 : 0);
+  game.bike.doubleJumpTime = doubleJumpTime;
+  game.airDoubleJumped = false;
   model.resetCrash();
   game.airTime = 0;
   game.airPeak = 0;
@@ -356,8 +422,39 @@ const CRASH_TEXT = {
   tree: 'Hit a tree',
 };
 
+function placeLabel(rank) {
+  if (rank === 1) return '1ST';
+  if (rank === 2) return '2ND';
+  if (rank === 3) return '3RD';
+  return `${rank}TH`;
+}
+
+function medalBadge(rank) {
+  const medal = { 1: 'gold', 2: 'silver', 3: 'bronze' }[rank];
+  if (!medal) return null;
+  const badge = document.createElement('span');
+  badge.className = `medal medal-${medal}`;
+  badge.setAttribute('aria-label', `${placeLabel(rank)} place`);
+  if (rank === 1) {
+    const crown = document.createElement('span');
+    crown.className = 'medal-crown';
+    crown.setAttribute('aria-hidden', 'true');
+    crown.textContent = '♛';
+    badge.append(crown);
+  }
+  badge.append(document.createTextNode(placeLabel(rank)));
+  return badge;
+}
+
+function appendRank(cell, rank, label = String(rank)) {
+  const badge = medalBadge(rank);
+  if (badge) cell.append(badge);
+  else cell.textContent = label;
+}
+
 function showOverlay(title, body, button) {
   ui.overlay.classList.remove('start');
+  ui.leaderboardFinish.hidden = game.mode !== 'finished';
   ui.title.textContent = title;
   ui.body.textContent = body;
   ui.button.textContent = button;
@@ -375,19 +472,18 @@ function renderStartBoard(empty = 'No times yet. Set the first one.') {
   } else {
     const list = document.createElement('ol');
     list.className = 'arcade-scores';
-    const places = ['1ST', '2ND', '3RD', '4TH', '5TH'];
     leaderboardEntries.slice(0, 5).forEach((entry, index) => {
       const row = document.createElement('li');
-      for (const [cls, text] of [
-        ['place', places[index]],
-        ['name', entry.name],
-        ['time', Number(entry.time).toFixed(2)],
-      ]) {
-        const cell = document.createElement('span');
-        cell.className = cls;
-        cell.textContent = text;
-        row.append(cell);
-      }
+      const place = document.createElement('span');
+      place.className = 'place';
+      appendRank(place, index + 1, placeLabel(index + 1));
+      const name = document.createElement('span');
+      name.className = 'name';
+      name.textContent = cleanText(entry.name);
+      const time = document.createElement('span');
+      time.className = 'time';
+      time.textContent = Number(entry.time).toFixed(2);
+      row.append(place, name, time);
       list.append(row);
     });
     board.append(list);
@@ -413,7 +509,12 @@ function refreshStartBoard() {
 
 function renderLeaderboard(container, entries, playerRank = null) {
   container.replaceChildren();
-  if (!entries?.length) return;
+  if (!entries?.length) {
+    const note = document.createElement('p');
+    note.textContent = 'No scores yet';
+    container.append(note);
+    return;
+  }
   const table = document.createElement('table');
   table.className = 'leaderboard';
   const head = document.createElement('thead');
@@ -425,18 +526,34 @@ function renderLeaderboard(container, entries, playerRank = null) {
   }
   head.append(header);
   const body = document.createElement('tbody');
-  entries.forEach((entry, index) => {
+  let playerRow = null;
+  entries.slice(0, 50).forEach((entry, index) => {
     const row = document.createElement('tr');
-    if (index + 1 === playerRank) row.className = 'player-row';
-    for (const value of [String(index + 1), entry.name, `${Number(entry.time).toFixed(2)} s`]) {
-      const cell = document.createElement('td');
-      cell.textContent = value;
-      row.append(cell);
+    if (index + 1 === playerRank) {
+      row.className = 'player-row';
+      row.id = 'full-board-player';
+      playerRow = row;
     }
+    const rankCell = document.createElement('td');
+    appendRank(rankCell, index + 1);
+    const name = document.createElement('td');
+    name.textContent = cleanText(entry.name);
+    const time = document.createElement('td');
+    time.textContent = `${Number(entry.time).toFixed(2)} s`;
+    row.append(rankCell, name, time);
     body.append(row);
   });
   table.append(head, body);
   container.append(table);
+  if (playerRow) {
+    requestAnimationFrame(() => playerRow.scrollIntoView({ block: 'center' }));
+  }
+}
+
+function showFullBoardMessage(message) {
+  const note = document.createElement('p');
+  note.textContent = message;
+  ui.fullLeaderboard.replaceChildren(note);
 }
 
 function renderRankOverlay(container, rows) {
@@ -456,15 +573,50 @@ function renderRankOverlay(container, rows) {
   for (const entry of rows) {
     const row = document.createElement('tr');
     if (entry.highlighted) row.className = 'player-row';
-    for (const value of [String(entry.rank), entry.name, `${Number(entry.time).toFixed(2)} s`]) {
-      const cell = document.createElement('td');
-      cell.textContent = value;
-      row.append(cell);
-    }
+    const rankCell = document.createElement('td');
+    appendRank(rankCell, entry.rank);
+    const name = document.createElement('td');
+    name.textContent = entry.name;
+    const time = document.createElement('td');
+    time.textContent = `${Number(entry.time).toFixed(2)} s`;
+    row.append(rankCell, name, time);
     body.append(row);
   }
   table.append(head, body);
   container.append(table);
+}
+
+function openLeaderboard() {
+  if (!ui.leaderboardOverlay.hidden) return;
+  leaderboardReturnFocus = document.activeElement;
+  ui.leaderboardOverlay.hidden = false;
+  showFullBoardMessage('Loading...');
+  ui.leaderboardClose.focus();
+  const requestId = ++leaderboardRequestId;
+  getLeaderboard().then((result) => {
+    if (requestId !== leaderboardRequestId || ui.leaderboardOverlay.hidden) return;
+    if (!result) {
+      showFullBoardMessage('Leaderboard offline');
+      return;
+    }
+    leaderboardEntries = Array.isArray(result.top) ? result.top : [];
+    bestGhost = result.ghost || null;
+    renderStartBoard();
+    renderLeaderboard(ui.fullLeaderboard, leaderboardEntries, submittedRank);
+  }).catch(() => {
+    if (requestId === leaderboardRequestId && !ui.leaderboardOverlay.hidden) {
+      showFullBoardMessage('Leaderboard offline');
+    }
+  });
+}
+
+function closeLeaderboard(restoreFocus = true) {
+  if (ui.leaderboardOverlay.hidden) return;
+  ui.leaderboardOverlay.hidden = true;
+  leaderboardRequestId += 1;
+  const returnFocus = leaderboardReturnFocus;
+  leaderboardReturnFocus = null;
+  if (restoreFocus && returnFocus?.isConnected) returnFocus.focus({ preventScroll: true });
 }
 
 function makeRunStats(name = 'Rider') {
@@ -502,6 +654,7 @@ async function submitRun() {
     }
     game.runSubmitted = true;
     ui.submitButton.textContent = 'Submitted';
+    submittedRank = result.rank ?? null;
     leaderboardEntries = result.top || [];
     renderStartBoard();
     startWave(result, run);
@@ -543,6 +696,25 @@ function simulate(input) {
   const wasAir = b.airborne;
   updateMovingObstacles(obstacles, game.time);
   stepBike(b, input, terrain, obstacles, DT);
+  if (b.airborne && b.doubleJumped) game.airDoubleJumped = true;
+  if (!b.crashed) {
+    pickups.forEach((pickup, index) => {
+      if (
+        pickup.taken ||
+        Math.hypot(b.x - pickup.x, b.z - pickup.z) >= PICKUP_RADIUS ||
+        b.y - terrain.heightAt(pickup.x, pickup.z) >= PICKUP_REACH
+      ) {
+        return;
+      }
+      applyPickup(b, pickup.type);
+      pickup.taken = true;
+      world.setPickupVisible(index, false);
+      flash(
+        pickup.type === 'coffee' ? 'Coffee! 2x speed' : 'Energy drink! Double jump',
+      );
+      audio.event('pickup', pickup.type);
+    });
+  }
   if (b.foliageHit) dust.leafBurst(b.foliageHit);
   game.time += DT;
   if (!game.leaderboardWarmed && -b.z / terrain.courseLength >= 0.8) {
@@ -570,7 +742,7 @@ function simulate(input) {
   }
   if (wasAir && !b.airborne && !b.crashed) {
     audio.event('land');
-    const air = airTimeBonus(game.airTime);
+    const air = game.airDoubleJumped ? 0 : airTimeBonus(game.airTime);
     const height = heightBonus(game.airPeak);
     const bonus = Math.round((air + height) * 10) / 10;
     game.bonus = Math.round((game.bonus + bonus) * 10) / 10;
@@ -586,6 +758,7 @@ function simulate(input) {
   if (!b.airborne) {
     game.airTime = 0;
     game.airPeak = 0;
+    game.airDoubleJumped = false;
   }
   game.maxSpeed = Math.max(game.maxSpeed, b.v);
   const s = -b.z;
@@ -646,7 +819,11 @@ function startWave(result, playerRun) {
     ui.waveLeaderboard,
     buildRankOverlayRows(result?.top, result?.rank, playerRun),
   );
+  const rival = rivalLine(result?.top, result?.rank);
+  ui.waveRivalLine.textContent = rival || '';
+  ui.waveRivalLine.hidden = !rival;
   ui.wavePanel.hidden = false;
+  ui.waveBadge.hidden = false;
   ui.hud.classList.add('wave-mode');
   ui.touch.hidden = true;
   const bike = game.bike;
@@ -693,6 +870,7 @@ function endWave() {
   if (!game.waveMode) return;
   game.waveMode = false;
   ui.wavePanel.hidden = true;
+  ui.waveBadge.hidden = true;
   ui.hud.classList.remove('wave-mode');
   ui.touch.hidden = false;
   if (waveOtter) {
@@ -718,9 +896,12 @@ function endWave() {
 
 function showMenu() {
   if (game.waveMode) endWave();
+  closeLeaderboard(false);
   const p = startPose();
   game.mode = 'ready';
   placeBike(p.x, p.z, p.heading, 0);
+  resetPickups();
+  clearPowerUps();
   game.time = 0;
   game.penalty = 0;
   game.bonus = 0;
@@ -729,6 +910,7 @@ function showMenu() {
   game.maxSpeed = 0;
   game.airTime = 0;
   game.airPeak = 0;
+  game.airDoubleJumped = false;
   game.maxAir = 0;
   game.maxHeight = 0;
   game.crashes = 0;
@@ -752,6 +934,7 @@ function showMenu() {
   ui.submitButton.textContent = 'Submit';
   ui.finishLeaderboard.hidden = true;
   ui.finishLeaderboard.replaceChildren();
+  ui.leaderboardFinish.hidden = true;
   ui.wavePanel.hidden = true;
   ui.hud.classList.remove('wave-mode');
   ui.touch.hidden = true;
@@ -865,6 +1048,12 @@ function tintGhost() {
 function updateHud() {
   const b = game.bike;
   touchControls.hidden = game.mode !== 'riding';
+  ui.coffeeTimer.hidden = !(b.boostTime > 0);
+  if (b.boostTime > 0) ui.coffeeTimer.textContent = `☕ 2x ${b.boostTime.toFixed(1)}`;
+  ui.energyTimer.hidden = !(b.doubleJumpTime > 0);
+  if (b.doubleJumpTime > 0) {
+    ui.energyTimer.textContent = `⚡ Double jump ${b.doubleJumpTime.toFixed(1)}`;
+  }
   ui.speed.textContent = String(Math.round(b.v * 3.6));
   ui.timer.textContent = (game.time + game.penalty - game.bonus).toFixed(2);
   const progress = Math.max(0, Math.min(1, -b.z / terrain.courseLength));

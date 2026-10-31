@@ -13,7 +13,7 @@ import modal
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from board import consume_rate_limit, find_duplicate_rank, insert_top, validate_run
+from board import TOP_SIZE, consume_rate_limit, find_duplicate_rank, insert_top, validate_run
 
 
 COMMENTATOR_PROMPT = """You are Otto, a sarcastic but loving otter who sits in the middle of a downhill mountain bike trail with a laptop and does live race commentary.
@@ -63,7 +63,7 @@ def _public_run(item: dict[str, Any]) -> dict[str, Any]:
 async def get_leaderboard() -> dict[str, Any]:
     ghost = board.get(BEST_GHOST_KEY)
     return {
-        "top": [_public_run(item) for item in _top_entries()[:10]],
+        "top": [_public_run(item) for item in _top_entries()[:TOP_SIZE]],
         "ghost": ghost,
     }
 
@@ -103,7 +103,7 @@ async def post_run(request: Request) -> dict[str, Any]:
         })
     return {
         "rank": rank,
-        "top": [_public_run(item) for item in updated[:10]],
+        "top": [_public_run(item) for item in updated[:TOP_SIZE]],
     }
 
 

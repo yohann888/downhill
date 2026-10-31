@@ -13,12 +13,13 @@ import {
   WASHOUT_TIME,
   WHEELBASE,
 } from '../src/physics/constants.js';
-import { createBike, stepBike } from '../src/physics/bike.js';
+import { applyPickup, createBike, stepBike } from '../src/physics/bike.js';
 import { airTimeBonus } from '../src/feel.js';
 import {
   OTTER_DEPTH_RATIO,
   OTTER_HEIGHT_RATIO,
 } from '../src/world/obstacles.js';
+import { COFFEE_TIME, ENERGY_TIME } from '../src/world/pickups.js';
 import { createPlaneTerrain, createStepDropTerrain } from './helpers.js';
 
 const noInput = { throttle: 0, brake: 0, steer: 0 };
@@ -562,5 +563,120 @@ describe('hop on a downhill', () => {
     expect(air).toBeGreaterThan(0.25);
     expect(air).toBeLessThan(0.8);
     expect(airTimeBonus(air)).toBe(0);
+  });
+});
+
+describe('power-up physics', () => {
+  it('clamps the coffee boost target and accelerates only for its timer', () => {
+    const terrain = createPlaneTerrain();
+    const targetBike = createBike({ x: 0, z: 0 }, terrain);
+    applyPickup(targetBike, 'coffee');
+    expect(targetBike.boostTarget).toBe(16);
+    targetBike.v = 10;
+    applyPickup(targetBike, 'coffee');
+    expect(targetBike.boostTime).toBe(COFFEE_TIME);
+    expect(targetBike.boostTarget).toBe(20);
+    targetBike.v = 30;
+    applyPickup(targetBike, 'coffee');
+    expect(targetBike.boostTarget).toBe(36);
+
+    const boosted = createBike({ x: 0, z: 0 }, terrain);
+    const baseline = createBike({ x: 0, z: 0 }, terrain);
+    boosted.v = 8;
+    baseline.v = 8;
+    applyPickup(boosted, 'coffee');
+    for (let step = 0; step < COFFEE_TIME / DT; step += 1) {
+      stepBike(boosted, noInput, terrain, [], DT);
+      stepBike(baseline, noInput, terrain, [], DT);
+    }
+    expect(boosted.v).toBeGreaterThan(baseline.v);
+    expect(boosted.boostTime).toBe(0);
+
+    const comparison = createBike({ x: boosted.x, z: boosted.z }, terrain);
+    comparison.v = boosted.v;
+    stepBike(boosted, noInput, terrain, [], DT);
+    stepBike(comparison, noInput, terrain, [], DT);
+    expect(boosted.v).toBeCloseTo(comparison.v, 10);
+  });
+
+  it('lets braking override coffee boost on a steep downhill', () => {
+    const terrain = createPlaneTerrain(0.35);
+    const boosted = createBike({ x: 0, z: 0 }, terrain);
+    const unboosted = createBike({ x: 0, z: 0 }, terrain);
+    boosted.v = 18;
+    unboosted.v = 18;
+    applyPickup(boosted, 'coffee');
+    const brake = { throttle: 0, brake: 1, steer: 0 };
+
+    for (let elapsed = 0; elapsed < 1; elapsed += DT) {
+      stepBike(boosted, brake, terrain, [], DT);
+      stepBike(unboosted, brake, terrain, [], DT);
+    }
+
+    expect(boosted.v).toBeLessThan(18);
+    expect(Math.abs(boosted.v - unboosted.v)).toBeLessThanOrEqual(0.1);
+  });
+
+  it('allows one double jump per air only while the energy timer is active', () => {
+    const terrain = createPlaneTerrain();
+    const unpowered = createBike({ x: 0, z: 0 }, terrain);
+    unpowered.airborne = true;
+    unpowered.y = 2;
+    stepBike(unpowered, { ...noInput, jump: 1 }, terrain, [], DT);
+    expect(unpowered.doubleJumped).toBe(false);
+
+    const powered = createBike({ x: 0, z: 0 }, terrain);
+    powered.airborne = true;
+    powered.y = 2;
+    applyPickup(powered, 'energy');
+    expect(powered.doubleJumpTime).toBe(ENERGY_TIME);
+    stepBike(powered, { ...noInput, jump: 1 }, terrain, [], DT);
+    expect(powered.doubleJumpUsed).toBe(true);
+    expect(powered.doubleJumped).toBe(true);
+    const vyBeforeSecondPress = powered.vy;
+    powered.jumpCooldown = 0;
+    stepBike(powered, { ...noInput, jump: 1 }, terrain, [], DT);
+    expect(powered.vy).toBeCloseTo(vyBeforeSecondPress - G * DT, 10);
+  });
+
+  it('does not double-fire from a ground hop and resets use state on landing', () => {
+    const terrain = createPlaneTerrain();
+    const bike = createBike({ x: 0, z: 0 }, terrain);
+    applyPickup(bike, 'energy');
+    stepBike(bike, { ...noInput, jump: 1 }, terrain, [], DT);
+    expect(bike.doubleJumped).toBe(false);
+    expect(bike.doubleJumpUsed).toBe(false);
+    expect(bike.vy).toBeCloseTo(3.5 - G * DT, 10);
+
+    bike.y = 0.005;
+    bike.vy = -1;
+    bike.airborne = true;
+    bike.doubleJumpUsed = true;
+    bike.doubleJumped = true;
+    stepBike(bike, noInput, terrain, [], DT);
+    expect(bike.airborne).toBe(false);
+    expect(bike.doubleJumpUsed).toBe(false);
+    expect(bike.doubleJumped).toBe(false);
+  });
+
+  it('expires energy after 30 seconds and clears coffee on crash', () => {
+    const terrain = createPlaneTerrain();
+    const bike = createBike({ x: 0, z: 0 }, terrain);
+    applyPickup(bike, 'energy');
+    for (let step = 0; step < ENERGY_TIME / DT; step += 1) {
+      stepBike(bike, noInput, terrain, [], DT);
+    }
+    expect(bike.doubleJumpTime).toBe(0);
+    bike.airborne = true;
+    bike.y = 2;
+    stepBike(bike, { ...noInput, jump: 1 }, terrain, [], DT);
+    expect(bike.doubleJumped).toBe(false);
+
+    applyPickup(bike, 'coffee');
+    applyPickup(bike, 'energy');
+    bike.crashed = 'rock';
+    stepBike(bike, noInput, terrain, [], DT);
+    expect(bike.boostTime).toBe(0);
+    expect(bike.doubleJumpTime).toBeCloseTo(ENERGY_TIME - DT, 10);
   });
 });

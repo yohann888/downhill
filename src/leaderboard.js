@@ -1,5 +1,21 @@
-function cleanText(value) {
+export function cleanText(value) {
   return String(value ?? '').replace(/[—–]/g, '-');
+}
+
+export function rivalLine(top, rank) {
+  if (!Array.isArray(top) || !Number.isInteger(rank) || rank < 1 || rank > top.length) {
+    return null;
+  }
+  if (rank === 1) return "You're #1!";
+
+  const above = top[rank - 2];
+  const current = top[rank - 1];
+  const aboveTime = Number(above?.time);
+  const currentTime = Number(current?.time);
+  const name = cleanText(above?.name).trim();
+  if (!name || !Number.isFinite(aboveTime) || !Number.isFinite(currentTime)) return null;
+
+  return `${(currentTime - aboveTime).toFixed(1)} s behind #${rank - 1} ${name}`;
 }
 
 export function buildRankOverlayRows(entries, playerRank, playerRun = {}) {

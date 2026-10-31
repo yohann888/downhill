@@ -11,6 +11,7 @@ import {
   prepareOtterMesh,
   updateOtterMesh,
 } from './otter.js';
+import { buildPickups } from './pickups.js';
 
 const smoothstep = (a, b, v) => {
   const t = Math.min(1, Math.max(0, (v - a) / (b - a)));
@@ -584,7 +585,7 @@ function buildMarkers(terrain) {
   return group;
 }
 
-export function buildWorld(scene, renderer, terrain, obstacles) {
+export function buildWorld(scene, renderer, terrain, obstacles, pickups = []) {
   let timeMode = 'day';
   const sky = new Sky();
   sky.scale.setScalar(20000);
@@ -727,7 +728,8 @@ export function buildWorld(scene, renderer, terrain, obstacles) {
   scene.add(buildRangeMesh(terrain, groundTextures));
   const trees = buildTrees(terrain, obstacles);
   const obstacleGroup = buildObstacles(terrain, obstacles, renderer, nightMaterials);
-  scene.add(trees, obstacleGroup);
+  const pickupModels = buildPickups(terrain, pickups);
+  scene.add(trees, obstacleGroup, pickupModels.group);
   scene.add(buildMarkers(terrain));
   const daySunColor = sun.color.clone();
   const daySunIntensity = sun.intensity;
@@ -838,6 +840,13 @@ export function buildWorld(scene, renderer, terrain, obstacles) {
     },
     update(time) {
       obstacleGroup.userData.update(time);
+      pickupModels.update(time);
+    },
+    setPickupVisible(index, visible) {
+      pickupModels.setVisible(index, visible);
+    },
+    setPickupsVisible(visible) {
+      pickupModels.setAllVisible(visible);
     },
   };
 }

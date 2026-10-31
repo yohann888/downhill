@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildRankOverlayRows } from '../src/leaderboard.js';
+import { buildRankOverlayRows, rivalLine } from '../src/leaderboard.js';
 
 const topTen = Array.from({ length: 10 }, (_, index) => ({
   name: `Rider ${index + 1}`,
@@ -30,5 +30,27 @@ describe('buildRankOverlayRows', () => {
       time: 142.5,
       highlighted: true,
     });
+  });
+});
+
+describe('rivalLine', () => {
+  it('recognizes the top rank', () => {
+    expect(rivalLine(topTen, 1)).toBe("You're #1!");
+  });
+
+  it('shows the one-decimal gap to the run immediately above', () => {
+    const top = [
+      { name: 'FAST', time: 20 },
+      { name: 'MAXR', time: 25.14 },
+      { name: 'Rider 3', time: 26.96 },
+    ];
+
+    expect(rivalLine(top, 3)).toBe('1.8 s behind #2 MAXR');
+  });
+
+  it('returns null when the rank is missing or beyond the list', () => {
+    expect(rivalLine(topTen, null)).toBeNull();
+    expect(rivalLine(topTen, 11)).toBeNull();
+    expect(rivalLine([], 1)).toBeNull();
   });
 });

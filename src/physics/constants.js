@@ -15,6 +15,7 @@ export const RHO = 1.2;
 export const CDA = 0.36;
 export const PEDAL_POWER = 500;
 export const PEDAL_FMAX = 300;
+export const BOOST_ACCEL = 6;
 export const WHEELBASE = 1.15;
 export const STEER_MAX_LOW = 0.5;
 export const STEER_OVERDEMAND = 1.1;
