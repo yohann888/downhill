@@ -24,10 +24,15 @@ const SUN_DIRECTION = new THREE.Vector3().setFromSphericalCoords(
   THREE.MathUtils.degToRad(90 - 9),
   THREE.MathUtils.degToRad(200),
 );
+const MOON_LIGHT_DIRECTION = new THREE.Vector3().setFromSphericalCoords(
+  1,
+  THREE.MathUtils.degToRad(63),
+  THREE.MathUtils.degToRad(170),
+);
 const MOON_DIRECTION = new THREE.Vector3().setFromSphericalCoords(
   1,
-  THREE.MathUtils.degToRad(35),
-  Math.PI,
+  THREE.MathUtils.degToRad(72),
+  THREE.MathUtils.degToRad(170),
 );
 
 function createNightSkyMaterial() {
@@ -37,21 +42,32 @@ function createNightSkyMaterial() {
     uniforms: {
       horizon: { value: new THREE.Color(0x18233d) },
       zenith: { value: new THREE.Color(0x030714) },
+      moonDirection: { value: MOON_DIRECTION.clone() },
+      moonHaze: { value: new THREE.Color(0x57c5d8) },
     },
     vertexShader: `
       varying float vHeight;
+      varying vec3 vDirection;
       void main() {
-        vHeight = normalize(position).y;
+        vDirection = normalize(position);
+        vHeight = vDirection.y;
         gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
       }
     `,
     fragmentShader: `
       uniform vec3 horizon;
       uniform vec3 zenith;
+      uniform vec3 moonDirection;
+      uniform vec3 moonHaze;
       varying float vHeight;
+      varying vec3 vDirection;
       void main() {
         float gradient = smoothstep(-0.1, 0.85, vHeight);
-        gl_FragColor = vec4(mix(horizon, zenith, gradient), 1.0);
+        float moonGlow = pow(max(dot(normalize(vDirection), normalize(moonDirection)), 0.0), 32.0);
+        float horizonFade = 1.0 - smoothstep(-0.1, 0.65, vHeight);
+        vec3 color = mix(horizon, zenith, gradient);
+        color += moonHaze * moonGlow * (0.45 + 0.55 * horizonFade);
+        gl_FragColor = vec4(color, 1.0);
       }
     `,
   });
@@ -541,7 +557,7 @@ export function buildWorld(scene, renderer, terrain, obstacles) {
     createNightSkyMaterial(),
   ));
   const environmentMoon = new THREE.Mesh(
-    new THREE.CircleGeometry(4, 24),
+    new THREE.CircleGeometry(8, 24),
     new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false, side: THREE.DoubleSide }),
   );
   environmentMoon.position.copy(MOON_DIRECTION).multiplyScalar(98);
@@ -565,25 +581,40 @@ export function buildWorld(scene, renderer, terrain, obstacles) {
   stars.visible = false;
   const moonPosition = MOON_DIRECTION.clone().multiplyScalar(5000);
   const moon = new THREE.Mesh(
-    new THREE.CircleGeometry(70, 48),
-    new THREE.MeshBasicMaterial({ color: 0xe0e8ff, toneMapped: false, fog: false }),
+    new THREE.CircleGeometry(140, 48),
+    new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false, fog: false }),
   );
   moon.position.copy(moonPosition);
   moon.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), MOON_DIRECTION.clone().negate());
   moon.visible = false;
   const moonGlow = new THREE.Sprite(new THREE.SpriteMaterial({
     map: createMoonGlowTexture(),
-    color: 0x9cb2ff,
+    color: 0xc6e8ff,
     transparent: true,
-    opacity: 0.62,
+    opacity: 0.9,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
     toneMapped: false,
   }));
   moonGlow.position.copy(moonPosition);
-  moonGlow.scale.set(390, 390, 1);
+  moonGlow.scale.set(780, 780, 1);
   moonGlow.visible = false;
-  scene.add(nightSky, stars, moonGlow, moon);
+  const moonHalo = new THREE.Mesh(
+    new THREE.TorusGeometry(235, 7, 8, 96),
+    new THREE.MeshBasicMaterial({
+      color: 0x8edcff,
+      transparent: true,
+      opacity: 0.18,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      toneMapped: false,
+      fog: false,
+    }),
+  );
+  moonHalo.position.copy(moonPosition);
+  moonHalo.quaternion.copy(moon.quaternion);
+  moonHalo.visible = false;
+  scene.add(nightSky, stars, moonGlow, moonHalo, moon);
   const nightMaterials = new Set();
   const originalRoughness = new Map();
   const setNightMaterials = (isNight) => {
@@ -654,19 +685,20 @@ export function buildWorld(scene, renderer, terrain, obstacles) {
     stars.visible = isNight;
     moon.visible = isNight;
     moonGlow.visible = isNight;
+    moonHalo.visible = isNight;
     if (isNight) {
       scene.background = new THREE.Color(0x030714);
       scene.environmentRotation.set(0, 0, 0);
       scene.environment = nightEnvironment;
-      scene.environmentIntensity = 0.12;
-      sun.color.set(0xb7c6ff);
-      sun.intensity = 0.9;
+      scene.environmentIntensity = 0.25;
+      sun.color.set(0xc8f0ff);
+      sun.intensity = 2.8;
       hemi.color.set(0x1a2a4a);
       hemi.groundColor.set(0x05070c);
       hemi.intensity = 0.12;
-      scene.fog.color.set(0x0a1424);
+      scene.fog.color.set(0x1b2a3a);
       scene.fog.density = 0.0006;
-      activeLightDirection.value = MOON_DIRECTION;
+      activeLightDirection.value = MOON_LIGHT_DIRECTION;
     } else {
       scene.background = dayBackground;
       scene.backgroundRotation.copy(dayBackgroundRotation);
