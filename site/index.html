@@ -149,7 +149,13 @@
   }
   document.getElementById('fs').addEventListener('click', toggleFullscreen);
   window.addEventListener('keydown', (event) => {
-    if (event.code !== 'KeyF' || event.repeat) return;
+    if (
+      event.code !== 'KeyF'
+      || event.repeat
+      || event.ctrlKey
+      || event.metaKey
+      || event.altKey
+    ) return;
     const target = event.target;
     if (target instanceof Element
       && target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;

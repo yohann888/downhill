@@ -456,6 +456,10 @@ window.addEventListener('keydown', (e) => {
     return;
   }
   if (
+    (e.code === 'KeyF' || e.code === 'KeyC' || e.code === 'KeyP')
+    && (e.ctrlKey || e.metaKey || e.altKey)
+  ) return;
+  if (
     game.mode === 'paused'
     && ui.pauseOverlay.contains(e.target)
     && (e.code === 'Enter' || e.code === 'Space')
