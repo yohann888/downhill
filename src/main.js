@@ -556,7 +556,7 @@ ui.button.addEventListener('click', () => start());
 ui.pauseResume.addEventListener('click', resumeGame);
 ui.pauseRestart.addEventListener('click', () => {
   resumeGame();
-  respawn(true);
+  start();
 });
 ui.pauseMenu.addEventListener('click', () => showMenu());
 ui.finishForm.addEventListener('submit', (event) => {
