@@ -175,10 +175,22 @@ function loadYouTubeApi() {
 function positionYouTubeMenu() {
   if (!youtubeContainer.classList.contains('yt-menu')) return;
   const bounds = youtubePlayerSlot.getBoundingClientRect();
-  const left = Math.max(0, Math.min(window.innerWidth - 204, bounds.left + (bounds.width - 204) / 2));
-  const top = Math.max(0, Math.min(window.innerHeight - 117, bounds.top));
+  const panelBounds = ui.overlay.querySelector('.panel').getBoundingClientRect();
+  const visibleBounds = {
+    left: Math.max(0, panelBounds.left),
+    right: Math.min(window.innerWidth, panelBounds.right),
+    top: Math.max(0, panelBounds.top),
+    bottom: Math.min(window.innerHeight, panelBounds.bottom),
+  };
+  const fullyVisible = bounds.left >= visibleBounds.left
+    && bounds.right <= visibleBounds.right
+    && bounds.top >= visibleBounds.top
+    && bounds.bottom <= visibleBounds.bottom;
+  const left = bounds.left + (bounds.width - 204) / 2;
+  const top = bounds.top;
   youtubeContainer.style.setProperty('--yt-menu-left', `${left}px`);
   youtubeContainer.style.setProperty('--yt-menu-top', `${top}px`);
+  youtubeContainer.style.visibility = fullyVisible ? 'visible' : 'hidden';
 }
 
 function fallbackFromYouTube(message) {
@@ -198,6 +210,7 @@ function syncYouTubeUi() {
   const active = audio.music.id === 'youtube';
   const menuVisible = ui.overlay.classList.contains('start') && !ui.overlay.classList.contains('hidden');
   const menuPlayer = active && menuVisible;
+  youtubeContainer.style.visibility = 'visible';
   youtubeContainer.classList.toggle('yt-menu', menuPlayer);
   youtubeContainer.classList.toggle('yt-ride', active && !menuVisible);
   youtubePlayerSlot.classList.toggle('yt-menu-active', menuPlayer);
@@ -208,17 +221,8 @@ function syncYouTubeUi() {
     return;
   }
   if (menuPlayer) {
-    const revealPlayer = () => {
-      positionYouTubeMenu();
-      const panel = ui.overlay.querySelector('.panel');
-      if (getComputedStyle(panel).overflowY !== 'auto') return;
-      const playerBounds = youtubeContainer.getBoundingClientRect();
-      const panelBounds = panel.getBoundingClientRect();
-      if (playerBounds.bottom > panelBounds.bottom) panel.scrollTop += playerBounds.bottom - panelBounds.bottom;
-      else if (playerBounds.top < panelBounds.top) panel.scrollTop -= panelBounds.top - playerBounds.top;
-    };
-    requestAnimationFrame(revealPlayer);
-    void document.fonts.ready.then(revealPlayer);
+    requestAnimationFrame(positionYouTubeMenu);
+    void document.fonts.ready.then(positionYouTubeMenu);
   }
   if (!active) {
     youtubeRequested = false;
