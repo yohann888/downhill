@@ -72,11 +72,11 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #000; font-f
 #volume { width: 104px; accent-color: #ffb547; cursor: pointer; }
 @font-face { font-family: 'Bungee'; src: url('./fonts/bungee.woff2') format('woff2'); font-display: swap; }
 @font-face { font-family: 'Press Start 2P'; src: url('./fonts/press-start-2p.woff2') format('woff2'); font-display: swap; }
-#start-menu, .arcade-credit { display: none; }
+#start-menu { display: none; }
 #overlay.start { overflow: hidden; background: radial-gradient(ellipse at 50% 30%, rgba(60,10,90,.25), rgba(8,0,24,.78) 75%); }
 #overlay.start::before { content: ''; position: absolute; left: 50%; top: 24%; width: 260vmax; height: 260vmax; margin: -130vmax 0 0 -130vmax; background: repeating-conic-gradient(from 0deg, rgba(255,60,200,.13) 0 6deg, rgba(255,200,40,.05) 6deg 12deg); animation: arcade-spin 40s linear infinite; pointer-events: none; }
 #overlay.start::after { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(0deg, rgba(0,0,0,.22) 0 1px, transparent 1px 3px); pointer-events: none; }
-#overlay.start #start-menu, #overlay.start .arcade-credit { display: block; }
+#overlay.start #start-menu { display: block; }
 #overlay.start #overlay-title, #overlay.start #overlay-body { display: none; }
 #overlay.start .panel { touch-action: pan-y; position: relative; z-index: 1; width: min(800px, 96vw); padding: 34px 24px 14px; background: none; overflow: visible; }
 body:has(#overlay.start:not(.hidden)) .hud-top, body:has(#overlay.start:not(.hidden)) #pickup-timers, body:has(#overlay.start:not(.hidden)) #touch, body:has(#overlay.start:not(.hidden)) #volume-label, body:has(#overlay.start:not(.hidden)) #brand-badge { visibility: hidden; }
@@ -113,8 +113,7 @@ kbd { display: inline-block; min-width: 24px; padding: 3px 6px 2px; border: 2px 
 #overlay .menu-secondary, #wave-panel .menu-secondary { margin-left: 8px; padding: 10px 14px; border: 2px solid #22e8ff; border-radius: 4px; background: rgba(26,6,56,.85); color: #fff; box-shadow: 0 0 12px rgba(34,232,255,.3); font: 10px/1.4 'Press Start 2P', monospace; text-transform: uppercase; }
 #wave-panel .wave-actions { display: flex; gap: 6px; }
 #wave-panel .wave-actions button { flex: 1; min-width: 0; width: auto; margin: 0; padding: 6px 4px; }
-.arcade-credit { margin: 16px 0 0 !important; font: 8px/1.6 'Press Start 2P', monospace; letter-spacing: .1em; text-transform: uppercase; color: #b9a6ff; opacity: .9 !important; }
-.production-credits { width: min(760px, 88vw); margin: 6px auto 0 !important; font: 8px/1.8 'Press Start 2P', monospace; color: #dceaff; overflow-wrap: anywhere; text-align: center; }
+.production-credits { width: min(760px, 88vw); margin: 10px auto 0 !important; font: 7px/1.8 'Press Start 2P', monospace; color: #dceaff; opacity: .78; overflow-wrap: anywhere; text-align: center; }
 .production-credits a { color: #22e8ff; text-decoration: none; }
 .production-credits a:hover { color: #ffe14a; text-decoration: underline; }
 @media (max-width: 600px) { .production-credits { font-size: 7px; } }
@@ -148,7 +147,7 @@ kbd { display: inline-block; min-width: 24px; padding: 3px 6px 2px; border: 2px 
 .devin-badge span { background: linear-gradient(180deg, #fff8cc 0%, #ffe14a 45%, #b87519 72%, #fff0a1); background-clip: text; color: transparent; font: 18px/1.2 'Bungee', system-ui, sans-serif; letter-spacing: .03em; text-shadow: 0 0 8px rgba(255,225,74,.35); white-space: nowrap; }
 #brand-badge { position: fixed; }
 #brand-badge-title, #brand-badge-finish { display: none; }
-#overlay.start #brand-badge-title { position: relative; left: auto; bottom: auto; display: inline-flex; margin: 14px auto 8px; transform: none; }
+#overlay.start #brand-badge-title { position: relative; left: auto; bottom: auto; display: flex; width: max-content; margin: 14px auto 8px; transform: none; }
 #overlay.start #brand-badge-finish { display: none; }
 #overlay:not(.start):not(.hidden) #brand-badge-finish { position: relative; left: auto; bottom: auto; display: inline-flex; margin: 12px auto 4px; transform: none; }
 #brand-badge-wave[hidden] { display: none; }
