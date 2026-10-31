@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   BRAKE_RAMP,
+  CRR_OFF,
+  CRR_TRAIL,
   DT,
   G,
+  MU_OFF,
+  MU_TRAIL,
+  OUT_OF_BOUNDS,
   STEER_MAX_LOW,
   STEER_OVERDEMAND,
   WHEELBASE,
@@ -94,6 +99,33 @@ describe('terrain and obstacle generation', () => {
       if (!crossesLip) maxStep = Math.max(maxStep, Math.abs(second - first));
     }
     expect(maxStep).toBeLessThan(0.5);
+  });
+
+  it('blends off-trail surface properties across a shoulder before the boundary', () => {
+    const terrain = createTerrain(17);
+    for (const z of [-60, -400, -700, -1150]) {
+      const center = terrain.centerX(z);
+      const hw = terrain.halfWidth(z);
+      const shoulder = terrain.surfaceAt(center + hw + 2, z);
+      expect(shoulder.crr).toBe(CRR_TRAIL);
+      expect(shoulder.mu).toBe(MU_TRAIL);
+      expect(shoulder.outOfBounds).toBe(false);
+
+      const outside = terrain.surfaceAt(center + hw + 10, z);
+      expect(outside.crr).toBe(CRR_OFF);
+      expect(outside.mu).toBe(MU_OFF);
+      expect(outside.outOfBounds).toBe(false);
+      expect(
+        terrain.surfaceAt(center + hw + OUT_OF_BOUNDS + 1, z).outOfBounds,
+      ).toBe(true);
+
+      let previousCrr = terrain.surfaceAt(center + hw, z).crr;
+      for (let distance = 0.25; distance <= 10; distance += 0.25) {
+        const crr = terrain.surfaceAt(center + hw + distance, z).crr;
+        expect(crr).toBeGreaterThanOrEqual(previousCrr);
+        previousCrr = crr;
+      }
+    }
   });
 
   it('places obstacles in order with trail exclusion zones and clear edge gaps', () => {
@@ -208,7 +240,7 @@ describe('terrain and obstacle generation', () => {
       for (const obstacle of obstacles) {
         if (obstacle.type === 'tree') continue;
         const distanceAhead = bike.z - obstacle.z;
-        if (distanceAhead < 0 || distanceAhead > 25) continue;
+        if (distanceAhead < 0 || distanceAhead > 35) continue;
         const arrivalTime = time + distanceAhead / Math.max(bike.v, 1);
         const obstacleX = obstacle.walk
           ? obstacle.baseX

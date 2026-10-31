@@ -1,7 +1,10 @@
 export const M = 95;
 export const G = 9.81;
 export const CRR_TRAIL = 0.012;
-export const CRR_OFF = 0.05;
+export const CRR_OFF = 0.03;
+export const SHOULDER = 4;
+export const SHOULDER_BLEND = 4;
+export const OUT_OF_BOUNDS = 12;
 export const MU_TRAIL = 0.65;
 export const MU_OFF = 0.5;
 export const RHO = 1.2;
