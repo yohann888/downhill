@@ -33,6 +33,12 @@
       <div id="photo-flash" aria-hidden="true"></div>
       <a id="brand-badge" class="devin-badge devin-badge-hud" href="https://devin.ai" target="_blank" rel="noopener"><img class="devin-logo-mark" src="./assets/devin-logo.svg" alt="Devin logo"><img class="devin-otter" src="./assets/otter-logo.png" alt=""><span>BUILT WITH DEVIN</span></a>
       <div id="audio-controls">
+        <button id="pause-button" type="button" aria-label="Pause" title="Pause" hidden>
+          <span class="hud-label">Pause</span>
+          <span class="hud-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" focusable="false"><path d="M8 5v14M16 5v14"/></svg>
+          </span>
+        </button>
         <button id="mute" type="button">
           <span class="hud-label"></span>
           <span class="hud-icon" aria-hidden="true">
@@ -63,6 +69,16 @@
       <label id="volume-label" for="volume">Volume
         <input id="volume" type="range" min="0" max="1" step="0.01" />
       </label>
+    </div>
+    <div id="pause-overlay" hidden>
+      <section class="pause-panel" role="dialog" aria-modal="true" aria-labelledby="pause-title">
+        <h2 id="pause-title">Paused</h2>
+        <div class="pause-actions">
+          <button id="pause-resume" type="button">Resume</button>
+          <button id="pause-restart" type="button">Restart</button>
+          <button id="pause-menu" type="button">Main menu</button>
+        </div>
+      </section>
     </div>
     <div id="overlay" class="start">
       <div class="panel">

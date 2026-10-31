@@ -27,6 +27,13 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #000; font-f
 #photo-flash { position: fixed; inset: 0; z-index: 20; background: #fff; opacity: 0; pointer-events: none; }
 #photo-flash.show { animation: photo-flash 150ms ease-out forwards; }
 @keyframes photo-flash { from { opacity: .85; } to { opacity: 0; } }
+#pause-overlay { position: fixed; inset: 0; z-index: 8; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+#pause-overlay[hidden] { display: none; }
+.pause-panel { width: min(320px, calc(100vw - 32px)); padding: 20px; border: 1px solid rgba(255,255,255,.55); border-radius: 10px; background: rgba(9,12,20,.92); box-shadow: 0 12px 36px rgba(0,0,0,.4); text-align: center; pointer-events: auto; }
+.pause-panel h2 { margin: 0 0 18px; font-size: 20px; font-weight: 600; }
+.pause-actions { display: grid; gap: 8px; }
+.pause-actions button { min-height: 42px; border: 1px solid rgba(255,255,255,.45); border-radius: 6px; background: rgba(255,255,255,.1); color: #fff; font: inherit; cursor: pointer; }
+.pause-actions button:focus-visible { outline: 2px solid #ffb547; outline-offset: 2px; }
 #overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.35); }
 #overlay.hidden { display: none; }
 .panel { text-align: center; padding: 28px 36px; border-radius: 14px; background: rgba(10,14,20,.82); max-width: 92vw; max-height: 90vh; overflow-y: auto; }
@@ -86,6 +93,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #000; font-f
 #audio-controls #time-toggle:not(.is-night) .icon-day,
 #audio-controls #time-toggle.is-night .icon-night,
 #audio-controls #music-select .hud-icon svg,
+#audio-controls #pause-button .hud-icon svg,
 #audio-controls #photo-button .hud-icon svg { display: block; }
 #volume-label { position: absolute; right: 16px; top: 110px; display: flex; align-items: center; gap: 8px; pointer-events: auto; font-size: 12px; text-shadow: 0 1px 4px rgba(0,0,0,.6); }
 @media (pointer: coarse) { #volume-label { display: none; } }

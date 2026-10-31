@@ -126,6 +126,11 @@ const ui = {
   mute: document.getElementById('mute'),
   music: document.getElementById('music-select'),
   timeToggle: document.getElementById('time-toggle'),
+  pause: document.getElementById('pause-button'),
+  pauseOverlay: document.getElementById('pause-overlay'),
+  pauseResume: document.getElementById('pause-resume'),
+  pauseRestart: document.getElementById('pause-restart'),
+  pauseMenu: document.getElementById('pause-menu'),
   photo: document.getElementById('photo-button'),
   volume: document.getElementById('volume'),
 };
@@ -144,7 +149,11 @@ function syncHudButton(button, label) {
   button.setAttribute('aria-label', label);
   button.title = label;
 }
+function syncPauseButton(paused = false) {
+  syncHudButton(ui.pause, paused ? 'Resume' : 'Pause');
+}
 syncMuteButton();
+syncPauseButton();
 syncHudButton(ui.photo, 'Photo');
 const menuMusic = document.getElementById('menu-music');
 const youtubeControls = document.getElementById('youtube-music-controls');
@@ -158,6 +167,7 @@ let youtubeApiPromise = null;
 let youtubeReadyPromise = null;
 let youtubePlayerReady = false;
 let youtubeRequested = false;
+let pausedYouTubeWasPlaying = false;
 let youtubeErrorActive = false;
 
 function loadYouTubeApi() {
@@ -405,6 +415,11 @@ ui.photo.addEventListener('click', () => {
   void takePhoto();
   ui.photo.blur();
 });
+ui.pause.addEventListener('click', () => {
+  if (game.mode === 'riding') pauseGame();
+  else if (game.mode === 'paused') resumeGame();
+  ui.pause.blur();
+});
 setTimeMode(timeMode, false);
 ui.volume.value = String(audio.volume);
 ui.volume.addEventListener('input', () => {
@@ -441,6 +456,16 @@ window.addEventListener('keydown', (e) => {
     closeLeaderboard();
     return;
   }
+  if (e.code === 'Escape' && game.mode === 'paused') {
+    e.preventDefault();
+    resumeGame();
+    return;
+  }
+  if (e.code === 'Escape' && game.mode === 'riding') {
+    e.preventDefault();
+    pauseGame();
+    return;
+  }
   if (e.code === 'Escape' && (game.mode === 'finished' || game.waveMode)) {
     e.preventDefault();
     showMenu();
@@ -467,9 +492,20 @@ window.addEventListener('keydown', (e) => {
     ui.timeToggle.click();
     e.preventDefault();
   }
+  if (e.code === 'KeyP' && !e.repeat) {
+    e.preventDefault();
+    if (game.mode === 'riding') pauseGame();
+    else if (game.mode === 'paused') resumeGame();
+    return;
+  }
   if (e.code === 'KeyC' && !e.repeat && (game.mode === 'riding' || game.mode === 'paused')) {
     e.preventDefault();
     void takePhoto();
+    return;
+  }
+  if (e.code === 'Enter' && game.mode === 'paused') {
+    e.preventDefault();
+    resumeGame();
     return;
   }
   if (game.waveMode) {
@@ -502,6 +538,9 @@ window.addEventListener('blur', () => {
   for (const k in keys) setKey(k, false);
   jumpQueued = false;
 });
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && game.mode === 'riding') pauseGame();
+});
 for (const button of touchButtons) {
   const key = button.dataset.key;
   const set = (value) => (e) => {
@@ -514,6 +553,12 @@ for (const button of touchButtons) {
   button.addEventListener('pointerleave', set(false));
 }
 ui.button.addEventListener('click', () => start());
+ui.pauseResume.addEventListener('click', resumeGame);
+ui.pauseRestart.addEventListener('click', () => {
+  resumeGame();
+  respawn(true);
+});
+ui.pauseMenu.addEventListener('click', () => showMenu());
 ui.finishForm.addEventListener('submit', (event) => {
   event.preventDefault();
   submitRun();
@@ -648,6 +693,9 @@ function start() {
   ui.hud.classList.remove('wave-mode');
   ui.touch.hidden = false;
   ui.overlay.classList.add('hidden');
+  ui.pauseOverlay.hidden = true;
+  pausedYouTubeWasPlaying = false;
+  syncPauseButton(false);
   syncYouTubeUi();
   snapCamera();
 }
@@ -668,6 +716,43 @@ function respawn(manual) {
   slowMoLocked = false;
   game.mode = 'riding';
   snapCamera();
+}
+
+function pauseGame() {
+  if (game.mode !== 'riding') return;
+  const playingState = window.YT?.PlayerState?.PLAYING ?? 1;
+  pausedYouTubeWasPlaying = audio.music.id === 'youtube'
+    && youtubePlayer?.getPlayerState?.() === playingState;
+  if (pausedYouTubeWasPlaying) youtubePlayer?.pauseVideo();
+  if (audio.music.id === 'youtube') audio.setYouTubePlaying(false);
+  for (const key in keys) setKey(key, false);
+  jumpQueued = false;
+  game.mode = 'paused';
+  accumulator = 0;
+  last = performance.now();
+  ui.pauseOverlay.hidden = false;
+  ui.touch.hidden = true;
+  syncPauseButton(true);
+  void audio.suspend();
+  updateHud();
+  ui.pauseResume.focus({ preventScroll: true });
+}
+
+function resumeGame() {
+  if (game.mode !== 'paused') return;
+  game.mode = 'riding';
+  ui.pauseOverlay.hidden = true;
+  ui.touch.hidden = false;
+  syncPauseButton(false);
+  accumulator = 0;
+  last = performance.now();
+  void audio.resume();
+  if (pausedYouTubeWasPlaying) {
+    audio.setYouTubePlaying(true);
+    youtubePlayer?.playVideo();
+  }
+  pausedYouTubeWasPlaying = false;
+  updateHud();
 }
 
 let flashTimeout;
@@ -1286,8 +1371,15 @@ function endWave() {
 function showMenu() {
   if (game.waveMode) endWave();
   closeLeaderboard(false);
+  if (game.mode === 'paused') {
+    void audio.resume();
+    audio.setYouTubePlaying(false);
+    pausedYouTubeWasPlaying = false;
+  }
   const p = startPose();
   game.mode = 'ready';
+  ui.pauseOverlay.hidden = true;
+  syncPauseButton(false);
   placeBike(p.x, p.z, p.heading, 0);
   resetPickups();
   clearPowerUps();
@@ -1439,7 +1531,9 @@ function updateHud() {
   const b = game.bike;
   const activeRide = game.mode === 'riding' || game.mode === 'paused';
   touchControls.hidden = game.mode !== 'riding';
+  ui.pause.hidden = !activeRide;
   ui.photo.hidden = !activeRide;
+  syncPauseButton(game.mode === 'paused');
   ui.coffeeTimer.hidden = !(b.boostTime > 0);
   if (b.boostTime > 0) ui.coffeeTimer.textContent = `☕ 2x ${b.boostTime.toFixed(1)}`;
   ui.energyTimer.hidden = !(b.doubleJumpTime > 0);
@@ -1524,12 +1618,17 @@ function frame(now) {
   const frameDt = Math.max(0, (now - last) / 1000);
   const dt = Math.min(0.1, frameDt);
   last = now;
-  updateAutoQuality(frameDt);
-  updateTimeScale(frameDt);
-  accumulator += dt * game.timeScale;
+  const paused = game.mode === 'paused';
+  if (!paused) {
+    updateAutoQuality(frameDt);
+    updateTimeScale(frameDt);
+    accumulator += dt * game.timeScale;
+  } else {
+    accumulator = 0;
+  }
   const input = readInput();
   let steps = 0;
-  while (accumulator >= DT && steps < 12) {
+  while (!paused && accumulator >= DT && steps < 12) {
     simulate(input);
     jumpQueued = false;
     input.jump = keys.jump ? 1 : 0;
@@ -1538,7 +1637,7 @@ function frame(now) {
     steps += 1;
   }
   if (steps === 12) accumulator = 0;
-  interpolate(accumulator / DT);
+  if (!paused) interpolate(accumulator / DT);
   model.root.position.set(render.x, render.y, render.z);
   const waveElapsed = game.waveMode ? (performance.now() - waveStartedAt) / 1000 : 0;
   model.setWavePose(game.waveMode, waveElapsed);
@@ -1550,7 +1649,7 @@ function frame(now) {
     { ...game.bike, heading: render.heading, lean: render.lean },
     game.mode === 'riding' ? input : {},
     gradeAt(game.bike),
-    dt,
+    paused ? 0 : dt,
     terrain.heightAt,
   );
   const ghostFrame = ghostAssetsReady ? sampleGhost(bestGhost, game.time) : null;
@@ -1571,7 +1670,7 @@ function frame(now) {
       },
       {},
       gradeAt(ghostFrame),
-      dt,
+      paused ? 0 : dt,
       terrain.heightAt,
     );
   } else {
@@ -1579,9 +1678,9 @@ function frame(now) {
   }
   world.followSun(model.root.position);
   world.update(game.time, camera.position, game.bike.v, game.quality >= 2);
-  dust.update(game.bike, game.mode === 'riding', dt);
-  audio.update(game.bike, input, game.mode === 'riding', dt, game.timeScale);
-  updateCamera(dt);
+  dust.update(game.bike, game.mode === 'riding', paused ? 0 : dt);
+  audio.update(game.bike, input, game.mode === 'riding', paused ? 0 : dt, game.timeScale);
+  updateCamera(paused ? 0 : dt);
   updateHud();
   renderCurrentFrame();
   requestAnimationFrame(frame);

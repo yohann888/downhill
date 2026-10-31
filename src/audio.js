@@ -239,6 +239,12 @@ export function createAudio() {
         await switchMusic(selectedMusic, version);
       }
     },
+    async suspend() {
+      if (ctx && ctx.state === 'running') await ctx.suspend();
+    },
+    async resume() {
+      if (ctx && ctx.state === 'suspended') await ctx.resume();
+    },
     get music() {
       return MUSIC_TRACKS.find((track) => track.id === selectedMusic);
     },
