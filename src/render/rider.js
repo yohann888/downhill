@@ -51,6 +51,24 @@ function boxCorners(box) {
   ];
 }
 
+function getDeformedRiderBounds(scene) {
+  scene.updateMatrixWorld(true);
+  const inverseSceneWorld = scene.matrixWorld.clone().invert();
+  const bounds = new THREE.Box3();
+  const vertex = new THREE.Vector3();
+  scene.traverse((object) => {
+    if (!object.isSkinnedMesh) return;
+    object.skeleton.update();
+    const objectToScene = inverseSceneWorld.clone().multiply(object.matrixWorld);
+    const position = object.geometry.getAttribute('position');
+    for (let index = 0; index < position.count; index += 1) {
+      object.getVertexPosition(index, vertex);
+      bounds.expandByPoint(vertex.applyMatrix4(objectToScene));
+    }
+  });
+  return bounds;
+}
+
 function stepSpring(state, target, dt, omega = 12) {
   const delta = state.value - target;
   const combined = state.velocity + omega * delta;
@@ -353,7 +371,12 @@ export function createRiderModel() {
     }
 
     riderScene = riderBody.scene;
-    const riderBox = new THREE.Box3().setFromObject(riderScene);
+    const skinnedRiderBounds = riderId === 'rider-body'
+      ? null
+      : getDeformedRiderBounds(riderScene);
+    const riderBox = skinnedRiderBounds && !skinnedRiderBounds.isEmpty()
+      ? skinnedRiderBounds
+      : new THREE.Box3().setFromObject(riderScene);
     riderCorners = boxCorners(riderBox);
     const riderSize = riderBox.getSize(new THREE.Vector3());
     if (riderSize.y < 1e-4) {
