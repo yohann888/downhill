@@ -15,7 +15,10 @@ import {
 } from '../src/physics/constants.js';
 import { createBike, stepBike } from '../src/physics/bike.js';
 import { airTimeBonus } from '../src/feel.js';
-import { OTTER_HEIGHT_RATIO } from '../src/world/obstacles.js';
+import {
+  OTTER_DEPTH_RATIO,
+  OTTER_HEIGHT_RATIO,
+} from '../src/world/obstacles.js';
 import { createPlaneTerrain, createStepDropTerrain } from './helpers.js';
 
 const noInput = { throttle: 0, brake: 0, steer: 0 };
@@ -448,7 +451,15 @@ describe('bike physics', () => {
 
   it('passes above an otter but Ottifies on contact below its visible height', () => {
     const terrain = createPlaneTerrain();
-    const rock = { type: 'rock', x: 0, z: -1, r: 1.05, h: 0.9 };
+    const rock = {
+      type: 'rock',
+      x: 0,
+      z: -1,
+      r: 1.05,
+      hx: 1.05,
+      hz: 1.05 * OTTER_DEPTH_RATIO,
+      h: 0.9,
+    };
     const bikeAtClearance = (clearance) => {
       const bike = createBike({ x: 0, z: 0 }, terrain);
       bike.v = 8;
@@ -463,6 +474,30 @@ describe('bike physics', () => {
     expect(bikeAtClearance(0.4).crashed).toBe('rock');
   });
 
+  it('uses the otter footprint ellipse for up-trail and side collisions', () => {
+    const terrain = createPlaneTerrain();
+    const otter = {
+      type: 'rock',
+      x: 0,
+      z: 0,
+      r: 1,
+      hx: 1,
+      hz: OTTER_DEPTH_RATIO,
+      h: 10,
+    };
+    const bikeAt = (x, z) => {
+      const bike = createBike({ x, z }, terrain);
+      bike.v = 8;
+      stepBike(bike, noInput, terrain, [otter], DT);
+      return bike;
+    };
+
+    expect(bikeAt(0, 1).crashed).toBeNull();
+    expect(bikeAt(0, 0.6).crashed).toBe('rock');
+    expect(bikeAt(1.2, 0).crashed).toBe('rock');
+    expect(bikeAt(1.5, 0).crashed).toBeNull();
+  });
+
   it('does not let a flat-ground hop clear the smallest otter', () => {
     const terrain = createPlaneTerrain();
     const otter = {
@@ -470,6 +505,8 @@ describe('bike physics', () => {
       x: 0,
       z: -2.5,
       r: 0.6,
+      hx: 0.6,
+      hz: 0.6 * OTTER_DEPTH_RATIO,
       h: OTTER_HEIGHT_RATIO * 2 * 0.6,
     };
     const bike = createBike({ x: 0, z: 0 }, terrain);

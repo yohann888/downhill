@@ -296,6 +296,10 @@ export function stepBike(state, input, terrain, obstacles, dt) {
       const dx = state.x - closest.x;
       const dz = state.z - closest.z;
       const distance = Math.hypot(dx, dz);
+      const hasEllipse = Number.isFinite(obstacle.hx) && Number.isFinite(obstacle.hz);
+      const ex = hasEllipse ? obstacle.hx + BIKE_RADIUS : 0;
+      const ez = hasEllipse ? obstacle.hz + BIKE_RADIUS : 0;
+      const q = hasEllipse ? Math.hypot(dx / ex, dz / ez) : 0;
       const contactDistance =
         obstacle.type === 'tree' ? obstacle.r + 0.2 : BIKE_RADIUS + obstacle.r;
 
@@ -310,7 +314,7 @@ export function stepBike(state, input, terrain, obstacles, dt) {
         }
       }
 
-      if (distance >= contactDistance) continue;
+      if (hasEllipse ? q >= 1 : distance >= contactDistance) continue;
       if (state.y - terrain.heightAt(closest.x, closest.z) >= obstacle.h) continue;
 
       if (state.v > OBSTACLE_CRASH_SPEED) {
@@ -318,10 +322,21 @@ export function stepBike(state, input, terrain, obstacles, dt) {
         break;
       }
 
-      const normalX = distance > 1e-9 ? dx / distance : 1;
-      const normalZ = distance > 1e-9 ? dz / distance : 0;
-      state.x = closest.x + normalX * contactDistance;
-      state.z = closest.z + normalZ * contactDistance;
+      if (hasEllipse) {
+        if (q <= 1e-9) {
+          state.x = closest.x + ex;
+          state.z = closest.z;
+        } else {
+          const k = 1 / Math.max(q, 1e-9);
+          state.x = closest.x + dx * k;
+          state.z = closest.z + dz * k;
+        }
+      } else {
+        const normalX = distance > 1e-9 ? dx / distance : 1;
+        const normalZ = distance > 1e-9 ? dz / distance : 0;
+        state.x = closest.x + normalX * contactDistance;
+        state.z = closest.z + normalZ * contactDistance;
+      }
       state.v = 0;
     }
     state.foliageTrees = currentFoliageTrees;

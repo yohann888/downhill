@@ -3,6 +3,7 @@ import { createRandom } from './noise.js';
 const TREE_TRUNK_RADII = [0.32, 0.15];
 const TREE_CANOPY_RADII = [2.64, 2];
 export const OTTER_HEIGHT_RATIO = 0.629841;
+export const OTTER_DEPTH_RATIO = 13289 / 32767;
 
 const smoothstep = (edge0, edge1, value) => {
   const t = Math.max(0, Math.min(1, (value - edge0) / (edge1 - edge0)));
@@ -84,6 +85,12 @@ export function createObstacles(terrain, seed = 7) {
             : 0.4,
       rot: random() * Math.PI * 2,
     };
+
+    if (type === 'rock') {
+      const extent = Math.max(r, 0.4);
+      obstacle.hx = extent;
+      obstacle.hz = extent * OTTER_DEPTH_RATIO;
+    }
 
     if (type === 'log') {
       const halfLength = length / 2;
