@@ -13,7 +13,12 @@ import {
   WHEELBASE,
 } from '../src/physics/constants.js';
 import { createBike, stepBike } from '../src/physics/bike.js';
-import { createObstacles, OTTER_HEIGHT_RATIO, updateMovingObstacles } from '../src/world/obstacles.js';
+import {
+  createObstacles,
+  OTTER_DEPTH_RATIO,
+  OTTER_HEIGHT_RATIO,
+  updateMovingObstacles,
+} from '../src/world/obstacles.js';
 import { createTerrain } from '../src/world/terrain.js';
 import { createPlaneTerrain } from './helpers.js';
 
@@ -202,8 +207,11 @@ describe('terrain and obstacle generation', () => {
       if (obstacle.type === 'rock') {
         const width = terrain.halfWidth(obstacle.z);
         const offset = Math.abs(obstacle.x - terrain.centerX(obstacle.z));
+        const extent = Math.max(obstacle.r, 0.4);
         expect(obstacle.r).toBeGreaterThanOrEqual(0.6 - 1e-9);
         expect(obstacle.r).toBeLessThanOrEqual(1.35 + 1e-9);
+        expect(obstacle.hx).toBe(extent);
+        expect(obstacle.hz).toBe(extent * OTTER_DEPTH_RATIO);
         expect(obstacle.h).toBeCloseTo(OTTER_HEIGHT_RATIO * 2 * obstacle.r);
         expect(width - offset - obstacle.r).toBeGreaterThanOrEqual(0.1 - 1e-9);
       }
