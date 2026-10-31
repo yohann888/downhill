@@ -507,6 +507,14 @@ window.addEventListener('keydown', (e) => {
     else if (game.mode === 'paused') resumeGame();
     return;
   }
+  if (e.code === 'KeyF' && !e.repeat) {
+    e.preventDefault();
+    const fullscreenPromise = document.fullscreenElement
+      ? document.exitFullscreen()
+      : document.documentElement.requestFullscreen?.();
+    fullscreenPromise?.catch(() => {});
+    return;
+  }
   if (e.code === 'KeyC' && !e.repeat && (game.mode === 'riding' || game.mode === 'paused')) {
     e.preventDefault();
     void takePhoto();
