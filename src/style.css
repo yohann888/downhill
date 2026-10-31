@@ -48,6 +48,10 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #000; font-f
 #wave-panel h2 { margin: 0; font-size: 16px; }
 #wave-panel .leaderboard { width: 100%; margin: 6px 0 10px; font-size: 12px; }
 #wave-panel .leaderboard th, #wave-panel .leaderboard td { padding: 3px 5px; }
+#wave-panel .leaderboard { table-layout: fixed; }
+#wave-panel .leaderboard th:first-child, #wave-panel .leaderboard td:first-child { width: 72px; white-space: nowrap; }
+#wave-panel .leaderboard th:last-child, #wave-panel .leaderboard td:last-child { width: 70px; white-space: nowrap; }
+#wave-panel .leaderboard .medal { min-width: 0; padding: 3px 4px; font-size: 6px; }
 #wave-ride-again { display: block; width: 100%; padding: 6px 10px; border: 1px solid rgba(255,255,255,.4); border-radius: 6px; background: rgba(255,181,71,.9); color: #1a1206; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
 #commentary-subtitle { position: fixed; left: 18%; right: 18%; bottom: 100px; z-index: 2; text-align: center; font-size: clamp(18px, 3vw, 28px); font-weight: 700; color: #fff; text-shadow: 0 2px 8px #000; opacity: 0; transition: opacity .2s; pointer-events: none; }
 #commentary-subtitle.show { opacity: 1; }
@@ -142,7 +146,7 @@ kbd { display: inline-block; min-width: 24px; padding: 3px 6px 2px; border: 2px 
 #wave-panel { border-color: rgba(255,43,214,.6); box-shadow: 0 0 16px rgba(255,43,214,.3); }
 .devin-badge { position: fixed; z-index: 5; left: 50%; bottom: 18px; display: inline-flex; align-items: center; justify-content: center; gap: 10px; max-width: calc(100vw - 24px); padding: 9px 16px; transform: translateX(-50%); border: 2px solid #22e8ff; border-radius: 999px; background: rgba(8,12,25,.86); box-shadow: 0 0 18px rgba(34,232,255,.45), inset 0 0 12px rgba(34,232,255,.12); color: #fff; text-decoration: none; pointer-events: auto; backdrop-filter: blur(7px); }
 .devin-badge .devin-logo-mark, .devin-badge .devin-otter { flex: 0 0 auto; width: 32px; height: 32px; object-fit: contain; }
-.devin-badge .devin-logo-mark { filter: drop-shadow(0 0 4px rgba(34,232,255,.8)); }
+.devin-badge .devin-logo-mark { object-fit: cover; object-position: left center; filter: brightness(0) invert(1) drop-shadow(0 0 4px rgba(34,232,255,.8)); }
 .devin-badge .devin-otter { border-radius: 50%; }
 .devin-badge span { background: linear-gradient(180deg, #fff8cc 0%, #ffe14a 45%, #b87519 72%, #fff0a1); background-clip: text; color: transparent; font: 18px/1.2 'Bungee', system-ui, sans-serif; letter-spacing: .03em; text-shadow: 0 0 8px rgba(255,225,74,.35); white-space: nowrap; }
 #brand-badge { position: fixed; }
