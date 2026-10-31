@@ -175,12 +175,14 @@ function loadYouTubeApi() {
 function positionYouTubeMenu() {
   if (!youtubeContainer.classList.contains('yt-menu')) return;
   const bounds = youtubePlayerSlot.getBoundingClientRect();
-  const panelBounds = ui.overlay.querySelector('.panel').getBoundingClientRect();
+  const panel = ui.overlay.querySelector('.panel');
+  const panelBounds = panel.getBoundingClientRect();
+  const footerBounds = ui.overlay.querySelector('.start-menu-footer').getBoundingClientRect();
   const visibleBounds = {
     left: Math.max(0, panelBounds.left),
     right: Math.min(window.innerWidth, panelBounds.right),
     top: Math.max(0, panelBounds.top),
-    bottom: Math.min(window.innerHeight, panelBounds.bottom),
+    bottom: Math.min(window.innerHeight, panelBounds.bottom, footerBounds.top),
   };
   const fullyVisible = bounds.left >= visibleBounds.left
     && bounds.right <= visibleBounds.right
