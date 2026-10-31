@@ -13,6 +13,10 @@ const MUSIC_TRACKS = [
 ];
 const clamp01 = (value) => Math.min(1, Math.max(0, value));
 
+export function getMusicGainTarget(target, { muted, selectedMusic, youtubePlaying }) {
+  return muted || (selectedMusic === 'youtube' && youtubePlaying) ? 0 : target;
+}
+
 export function createAudio() {
   let ctx = null;
   let master = null;
@@ -70,7 +74,6 @@ export function createAudio() {
     gain.gain.setValueAtTime(0, now);
     source.connect(gain).connect(master);
     source.start(now);
-    gain.gain.linearRampToValueAtTime(voiceSource ? 0.1 : 0.25, now + 0.5);
     if (previousGain && previousSource) {
       previousGain.gain.cancelScheduledValues(now);
       previousGain.gain.setValueAtTime(previousGain.gain.value, now);
@@ -79,6 +82,13 @@ export function createAudio() {
     }
     musicSource = source;
     musicGain = gain;
+    setMusicGain(voiceSource ? 0.1 : 0.25, 0.08);
+  }
+
+  function setMusicGain(target = voiceSource ? 0.1 : 0.25, timeConstant = 0.08) {
+    if (!musicGain || !ctx) return;
+    const gain = getMusicGainTarget(target, { muted, selectedMusic, youtubePlaying });
+    musicGain.gain.setTargetAtTime(gain, ctx.currentTime, timeConstant);
   }
 
   function startLoop(name, gainValue = 0) {
@@ -184,9 +194,7 @@ export function createAudio() {
   async function playCommentary(base64) {
     if (!ctx || !master || !base64) return false;
     let source = null;
-    const restoreMusic = () => {
-      if (musicGain) musicGain.gain.setTargetAtTime(0.25, ctx.currentTime, 0.08);
-    };
+    const restoreMusic = () => setMusicGain();
     try {
       const bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
       const buffer = await ctx.decodeAudioData(bytes.buffer);
@@ -197,7 +205,7 @@ export function createAudio() {
       source.buffer = buffer;
       voiceSource = source;
       source.connect(master);
-      if (musicGain) musicGain.gain.setTargetAtTime(0.1, ctx.currentTime, 0.08);
+      setMusicGain(0.1);
       source.addEventListener('ended', () => {
         if (voiceSource === source) {
           voiceSource = null;
@@ -254,15 +262,13 @@ export function createAudio() {
       musicSelectionVersion += 1;
       if (ctx) void switchMusic(selectedMusic, musicSelectionVersion);
       if (musicGain && id === 'youtube') {
-        musicGain.gain.setTargetAtTime(youtubePlaying ? 0 : 0.25, ctx.currentTime, 0.12);
+        setMusicGain();
       }
       return MUSIC_TRACKS.find((track) => track.id === selectedMusic);
     },
     setYouTubePlaying(playing) {
       youtubePlaying = Boolean(playing);
-      if (selectedMusic === 'youtube' && musicGain && ctx) {
-        musicGain.gain.setTargetAtTime(youtubePlaying ? 0 : 0.25, ctx.currentTime, 0.12);
-      }
+      if (selectedMusic === 'youtube') setMusicGain();
     },
     setRain(active) {
       rainSelected = Boolean(active) && selectedMusic === 'music-rain';
@@ -271,6 +277,7 @@ export function createAudio() {
       muted = !muted;
       localStorage.setItem('downhill-muted', muted ? '1' : '0');
       if (master) master.gain.setTargetAtTime(muted ? 0 : volume, ctx.currentTime, 0.05);
+      setMusicGain();
       return muted;
     },
     setVolume(next) {

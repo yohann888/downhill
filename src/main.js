@@ -21,6 +21,7 @@ import {
 import { getCommentary, getLeaderboard, postRun } from './api.js';
 import { buildRankOverlayRows, cleanText, rivalLine } from './leaderboard.js';
 import { createRecorder, sampleGhost } from './ghost.js';
+import { getEditableKeyboardTarget } from './keyboard.js';
 import {
   loadRiderPreference,
   RIDER_OPTIONS,
@@ -132,6 +133,7 @@ const youtubeLink = document.getElementById('youtube-link');
 const youtubePlay = document.getElementById('youtube-play');
 const youtubeMessage = document.getElementById('youtube-message');
 const youtubeContainer = document.getElementById('youtube-player-container');
+const youtubePlayerSlot = document.getElementById('youtube-player-slot');
 let youtubePlayer = null;
 let youtubeApiPromise = null;
 let youtubeReadyPromise = null;
@@ -155,16 +157,44 @@ function loadYouTubeApi() {
   return youtubeApiPromise;
 }
 
+function positionYouTubeMenu() {
+  if (!youtubeContainer.classList.contains('yt-menu')) return;
+  const bounds = youtubePlayerSlot.getBoundingClientRect();
+  const left = Math.max(0, Math.min(window.innerWidth - 204, bounds.left + (bounds.width - 204) / 2));
+  const top = Math.max(0, Math.min(window.innerHeight - 117, bounds.top));
+  youtubeContainer.style.setProperty('--yt-menu-left', `${left}px`);
+  youtubeContainer.style.setProperty('--yt-menu-top', `${top}px`);
+}
+
+function fallbackFromYouTube(message) {
+  const previousMusic = audio.previousMusic;
+  const fallback = previousMusic.youtubeOnly ? audio.tracks[0] : previousMusic;
+  youtubeErrorActive = true;
+  youtubeRequested = false;
+  youtubePlayer?.pauseVideo();
+  youtubeMessage.textContent = `${message} Playing ${fallback.label} instead.`;
+  if (audio.music.id === 'youtube') {
+    audio.setMusic(fallback.id);
+    syncMusicUi();
+  }
+}
+
 function syncYouTubeUi() {
   const active = audio.music.id === 'youtube';
-  const playerSlot = ui.overlay.classList.contains('start') && !ui.overlay.classList.contains('hidden')
-    ? document.getElementById('youtube-player-slot')
-    : ui.hud;
-  if (youtubeContainer.parentElement !== playerSlot) playerSlot.append(youtubeContainer);
+  const menuVisible = ui.overlay.classList.contains('start') && !ui.overlay.classList.contains('hidden');
+  const menuPlayer = active && menuVisible;
+  youtubeContainer.classList.toggle('yt-menu', menuPlayer);
+  youtubeContainer.classList.toggle('yt-ride', active && !menuVisible);
+  youtubePlayerSlot.classList.toggle('yt-menu-active', menuPlayer);
   youtubeControls.hidden = !active && !youtubeErrorActive;
   youtubeContainer.hidden = !active;
-  if (active && playerSlot.id === 'youtube-player-slot') {
+  if (active && !parseYouTubeId(localStorage.getItem('downhill.youtube-link'))) {
+    fallbackFromYouTube('No valid saved YouTube link.');
+    return;
+  }
+  if (menuPlayer) {
     const revealPlayer = () => {
+      positionYouTubeMenu();
       const panel = ui.overlay.querySelector('.panel');
       if (getComputedStyle(panel).overflowY !== 'auto') return;
       const playerBounds = youtubeContainer.getBoundingClientRect();
@@ -208,26 +238,28 @@ function syncYouTubeUi() {
           },
           onError: (event) => {
             if (event.data !== 101 && event.data !== 150) return;
-            youtubeMessage.textContent = "This video can't be embedded. Try another link.";
-            youtubeErrorActive = true;
-            youtubeRequested = false;
-            youtubePlayer.pauseVideo();
-            audio.setMusic(audio.previousMusic.id);
-            syncMusicUi();
+            fallbackFromYouTube("This video can't be embedded. Try another link.");
           },
         },
       });
     });
   }).catch(() => {
-    youtubeMessage.textContent = 'YouTube is unavailable.';
+    fallbackFromYouTube('YouTube is unavailable.');
   });
 }
+
+ui.overlay.querySelector('.panel').addEventListener('scroll', positionYouTubeMenu, { passive: true });
+window.addEventListener('resize', positionYouTubeMenu);
 
 async function playYouTubeLink() {
   const link = youtubeLink.value.trim();
   const id = parseYouTubeId(link);
   if (!id) {
-    youtubeMessage.textContent = 'Enter a valid YouTube link.';
+    if (audio.music.id === 'youtube') {
+      fallbackFromYouTube('Saved YouTube link is missing or invalid.');
+    } else {
+      youtubeMessage.textContent = 'Enter a valid YouTube link.';
+    }
     return false;
   }
   localStorage.setItem('downhill.youtube-link', link);
@@ -251,7 +283,7 @@ async function playYouTubeLink() {
     }
     return true;
   } catch {
-    youtubeMessage.textContent = 'YouTube is unavailable.';
+    fallbackFromYouTube('YouTube is unavailable.');
     return false;
   }
 }
@@ -370,6 +402,14 @@ const KEYMAP = {
   KeyW: 'throttle', ArrowUp: 'throttle', KeyS: 'brake', ArrowDown: 'brake',
 };
 window.addEventListener('keydown', (e) => {
+  const editableTarget = getEditableKeyboardTarget(e.target, document.activeElement);
+  if (editableTarget) {
+    if (e.code === 'Escape') {
+      e.preventDefault();
+      editableTarget.blur?.();
+    }
+    return;
+  }
   if (e.code === 'Escape' && !ui.leaderboardOverlay.hidden) {
     e.preventDefault();
     closeLeaderboard();
@@ -380,7 +420,6 @@ window.addEventListener('keydown', (e) => {
     showMenu();
     return;
   }
-  if (e.target === ui.nameInput) return;
   if (e.code === 'KeyB' && !e.repeat) {
     e.preventDefault();
     if (ui.leaderboardOverlay.hidden) openLeaderboard();
