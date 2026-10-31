@@ -268,10 +268,7 @@ export function stepBike(state, input, terrain, obstacles, dt) {
       }
 
       if (distance >= contactDistance) continue;
-      if (
-        obstacle.type !== 'rock' &&
-        state.y - terrain.heightAt(closest.x, closest.z) >= obstacle.h
-      ) continue;
+      if (state.y - terrain.heightAt(closest.x, closest.z) >= obstacle.h) continue;
 
       if (state.v > OBSTACLE_CRASH_SPEED) {
         state.crashed = obstacle.type;

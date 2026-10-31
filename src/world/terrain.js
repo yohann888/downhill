@@ -9,8 +9,9 @@ import {
 } from '../physics/constants.js';
 import { createValueNoise } from './noise.js';
 
-const COURSE_LENGTH = 1200;
-const KICKER_S = [180, 390, 610, 835, 1050];
+const S = 0.75;
+const COURSE_LENGTH = 1200 * S;
+const KICKER_S = [180, 390, 610, 835, 1050].map((s) => s * S);
 const KICKER_HEIGHT = 1.2;
 
 const smoothstep = (edge0, edge1, value) => {
@@ -40,20 +41,20 @@ export function createTerrain(seed = 1) {
 
   const halfWidth = (z) => {
     const s = -z;
-    const narrowOne = smoothstep(445, 465, s) * (1 - smoothstep(500, 520, s));
-    const narrowTwo = smoothstep(900, 920, s) * (1 - smoothstep(965, 985, s));
+    const narrowOne = smoothstep(445 * S, 465 * S, s) * (1 - smoothstep(500 * S, 520 * S, s));
+    const narrowTwo = smoothstep(900 * S, 920 * S, s) * (1 - smoothstep(965 * S, 985 * S, s));
     return 3 - 0.8 * Math.max(narrowOne, narrowTwo);
   };
 
   const baseGrade = (s) => {
-    if (s < 40) return 0.1;
+    if (s < 40 * S) return 0.1;
     let grade =
       0.21 +
       0.035 * Math.sin(s / 145) +
       0.025 * Math.sin(s / 57 + 1.1) +
       0.012 * Math.sin(s / 23 + 2.4);
-    const restOne = smoothstep(300, 320, s) * (1 - smoothstep(385, 405, s));
-    const restTwo = smoothstep(760, 780, s) * (1 - smoothstep(845, 865, s));
+    const restOne = smoothstep(300 * S, 320 * S, s) * (1 - smoothstep(385 * S, 405 * S, s));
+    const restTwo = smoothstep(760 * S, 780 * S, s) * (1 - smoothstep(845 * S, 865 * S, s));
     const rest = Math.max(restOne, restTwo);
     grade += (0.06 - grade) * rest;
 

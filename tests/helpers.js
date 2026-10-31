@@ -11,13 +11,13 @@ export function createPlaneTerrain(grade = 0) {
     centerX() {
       return 0;
     },
-    courseLength: 1200,
+    courseLength: 900,
     halfWidth() {
       return 3;
     },
     checkpoints: [],
     kickers: [],
-    finishZ: -1200,
+    finishZ: -900,
   };
 }
 
@@ -32,13 +32,13 @@ export function createStepDropTerrain(drop) {
     centerX() {
       return 0;
     },
-    courseLength: 1200,
+    courseLength: 900,
     halfWidth() {
       return 3;
     },
     checkpoints: [],
     kickers: [],
-    finishZ: -1200,
+    finishZ: -900,
   };
 }
 

@@ -15,6 +15,7 @@ import {
 } from '../src/physics/constants.js';
 import { createBike, stepBike } from '../src/physics/bike.js';
 import { airTimeBonus } from '../src/feel.js';
+import { OTTER_HEIGHT_RATIO } from '../src/world/obstacles.js';
 import { createPlaneTerrain, createStepDropTerrain } from './helpers.js';
 
 const noInput = { throttle: 0, brake: 0, steer: 0 };
@@ -393,17 +394,40 @@ describe('bike physics', () => {
     expect(foliageBike.v).toBeCloseTo(baseline.v, 8);
   });
 
-  it('hits an otter even when the bike is airborne above it', () => {
+  it('passes above an otter but Ottifies on contact below its visible height', () => {
     const terrain = createPlaneTerrain();
     const rock = { type: 'rock', x: 0, z: -1, r: 1.05, h: 0.9 };
+    const bikeAtClearance = (clearance) => {
+      const bike = createBike({ x: 0, z: 0 }, terrain);
+      bike.v = 8;
+      bike.y += clearance;
+      bike.airborne = true;
+      for (let elapsed = 0; elapsed < 1 && !bike.crashed; elapsed += DT) {
+        stepBike(bike, noInput, terrain, [rock], DT);
+      }
+      return bike;
+    };
+    expect(bikeAtClearance(1.5).crashed).toBeNull();
+    expect(bikeAtClearance(0.4).crashed).toBe('rock');
+  });
+
+  it('does not let a flat-ground hop clear the smallest otter', () => {
+    const terrain = createPlaneTerrain();
+    const otter = {
+      type: 'rock',
+      x: 0,
+      z: -2.5,
+      r: 0.6,
+      h: OTTER_HEIGHT_RATIO * 2 * 0.6,
+    };
     const bike = createBike({ x: 0, z: 0 }, terrain);
-    bike.v = 8;
-    bike.y += 1.5;
-    bike.airborne = true;
+    bike.v = 10;
+    stepBike(bike, { ...noInput, jump: 1 }, terrain, [otter], DT);
     for (let elapsed = 0; elapsed < 1 && !bike.crashed; elapsed += DT) {
-      stepBike(bike, noInput, terrain, [rock], DT);
+      stepBike(bike, noInput, terrain, [otter], DT);
     }
     expect(bike.crashed).toBe('rock');
+    expect(otter.h).toBeGreaterThan(0.62);
   });
 
   it('clears a log with a flat-ground hop at speed', () => {

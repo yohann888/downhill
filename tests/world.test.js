@@ -13,7 +13,7 @@ import {
   WHEELBASE,
 } from '../src/physics/constants.js';
 import { createBike, stepBike } from '../src/physics/bike.js';
-import { createObstacles, updateMovingObstacles } from '../src/world/obstacles.js';
+import { createObstacles, OTTER_HEIGHT_RATIO, updateMovingObstacles } from '../src/world/obstacles.js';
 import { createTerrain } from '../src/world/terrain.js';
 import { createPlaneTerrain } from './helpers.js';
 
@@ -82,8 +82,12 @@ describe('terrain and obstacle generation', () => {
 
   it('has the target drop and a continuous centerline height except at kicker lips', () => {
     const terrain = createTerrain();
-    expect(terrain.totalDrop).toBeGreaterThanOrEqual(200);
-    expect(terrain.totalDrop).toBeLessThanOrEqual(260);
+    expect(terrain.courseLength).toBe(900);
+    expect(terrain.checkpoints.map((checkpoint) => checkpoint.s)).toEqual([
+      150, 300, 450, 600, 750, 900,
+    ]);
+    expect(terrain.totalDrop).toBeGreaterThanOrEqual(150);
+    expect(terrain.totalDrop).toBeLessThanOrEqual(200);
 
     let maxStep = 0;
     for (let s = 0; s < terrain.courseLength; s += 0.1) {
@@ -103,7 +107,7 @@ describe('terrain and obstacle generation', () => {
 
   it('blends off-trail surface properties across a shoulder before the boundary', () => {
     const terrain = createTerrain(17);
-    for (const z of [-60, -400, -700, -1150]) {
+    for (const z of [-60, -300, -600, -850]) {
       const center = terrain.centerX(z);
       const hw = terrain.halfWidth(z);
       const shoulder = terrain.surfaceAt(center + hw + 2, z);
@@ -154,8 +158,7 @@ describe('terrain and obstacle generation', () => {
         const offset = Math.abs(obstacle.x - terrain.centerX(obstacle.z));
         expect(obstacle.r).toBeGreaterThanOrEqual(0.6 - 1e-9);
         expect(obstacle.r).toBeLessThanOrEqual(1.35 + 1e-9);
-        expect(obstacle.h).toBeGreaterThanOrEqual(0.6 - 1e-9);
-        expect(obstacle.h).toBeLessThanOrEqual(1.35 + 1e-9);
+        expect(obstacle.h).toBeCloseTo(OTTER_HEIGHT_RATIO * 2 * obstacle.r);
         expect(width - offset - obstacle.r).toBeGreaterThanOrEqual(0.1 - 1e-9);
       }
     }

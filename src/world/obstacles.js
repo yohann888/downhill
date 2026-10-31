@@ -2,6 +2,7 @@ import { createRandom } from './noise.js';
 
 const TREE_TRUNK_RADII = [0.32, 0.15];
 const TREE_CANOPY_RADII = [2.64, 2];
+export const OTTER_HEIGHT_RATIO = 0.629841;
 
 function inKickerExclusion(s, kickers) {
   return kickers.some((kicker) => s >= kicker.s - 25 && s <= kicker.s + 15);
@@ -72,7 +73,7 @@ export function createObstacles(terrain, seed = 7) {
       r,
       h:
         type === 'rock'
-          ? (0.4 + random() * 0.5) * 1.5
+          ? OTTER_HEIGHT_RATIO * 2 * Math.max(r, 0.4)
           : type === 'stump'
             ? 0.5
             : 0.4,
