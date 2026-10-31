@@ -72,7 +72,15 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #000; font-f
   .pickup-timer { font-size: 10px; }
 }
 #audio-controls { position: absolute; right: 16px; top: 75px; display: flex; gap: 6px; pointer-events: auto; }
-#audio-controls button { font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,.4); background: rgba(0,0,0,.25); color: #fff; cursor: pointer; }
+#audio-controls button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,.4); background: rgba(0,0,0,.25); color: #fff; cursor: pointer; }
+#audio-controls .hud-label { display: inline; }
+#audio-controls .hud-icon { display: none; align-items: center; justify-content: center; }
+#audio-controls .hud-icon svg { display: none; width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+#audio-controls #mute:not(.is-muted) .icon-sound-on,
+#audio-controls #mute.is-muted .icon-sound-off,
+#audio-controls #time-toggle:not(.is-night) .icon-day,
+#audio-controls #time-toggle.is-night .icon-night,
+#audio-controls #music-select .hud-icon svg { display: block; }
 #volume-label { position: absolute; right: 16px; top: 110px; display: flex; align-items: center; gap: 8px; pointer-events: auto; font-size: 12px; text-shadow: 0 1px 4px rgba(0,0,0,.6); }
 #volume { width: 104px; accent-color: #ffb547; cursor: pointer; }
 @font-face { font-family: 'Bungee'; src: url('./fonts/bungee.woff2') format('woff2'); font-display: swap; }
@@ -225,8 +233,9 @@ body:has(#overlay:not(.hidden)) #brand-badge { visibility: hidden; }
   #ghost-status { font-size: 9px; }
   #progress-percent { min-width: 3ch; font-size: 10px; }
   #audio-controls { top: calc(env(safe-area-inset-top) + 104px); right: 10px; gap: 5px; }
-  #audio-controls button { width: 40px; height: 40px; padding: 0; font-size: 19px; line-height: 1; }
-  #volume-label { display: none; }
+  #audio-controls .hud-label { display: none; }
+  #audio-controls .hud-icon { display: inline-flex; }
+  #audio-controls button { width: 40px; height: 40px; padding: 0; line-height: 1; }
   #brand-badge { top: calc(env(safe-area-inset-top) + 62px); bottom: auto; height: 32px; gap: 5px; padding: 2px 8px; }
   .devin-badge-hud .devin-logo-mark, .devin-badge-hud .devin-otter { width: 22px; height: 22px; }
   .devin-badge-hud span { font-size: 11px; }
@@ -236,6 +245,7 @@ body:has(#overlay:not(.hidden)) #brand-badge { visibility: hidden; }
   #touch button span { white-space: nowrap; }
   #touch button small { display: none; }
   #commentary-subtitle { left: 8%; right: 8%; bottom: calc(env(safe-area-inset-bottom) + 92px); font-size: 18px; }
+  body:has(#overlay.start:not(.hidden)) #audio-controls { top: calc(env(safe-area-inset-top) + 8px); right: 50%; transform: translateX(50%); }
 }
 .medal { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 2px; min-width: 4.5em; padding: 4px 5px; overflow: hidden; border: 2px solid rgba(255,255,255,.72); border-radius: 3px; color: #24143c; font: 7px/1.3 'Press Start 2P', monospace; text-shadow: 0 1px rgba(255,255,255,.65); box-shadow: inset 1px 1px rgba(255,255,255,.8), inset -1px -2px rgba(20,10,35,.45), 2px 2px 0 #1a0638; vertical-align: middle; }
 .medal::after { position: absolute; inset: -20% auto -20% -70%; width: 45%; content: ''; background: linear-gradient(100deg, transparent, rgba(255,255,255,.92), transparent); transform: skewX(-18deg); animation: medal-shine 3.2s ease-in-out infinite; pointer-events: none; }

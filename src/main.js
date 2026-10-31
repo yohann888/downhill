@@ -127,16 +127,19 @@ const ui = {
   volume: document.getElementById('volume'),
 };
 function syncMuteButton() {
-  const label = audio.muted ? 'Sound off' : 'Sound on';
-  ui.mute.textContent = audio.muted ? '🔇' : '🔊';
-  ui.mute.setAttribute('aria-label', label);
-  ui.mute.title = label;
+  const muted = audio.muted;
+  ui.mute.classList.toggle('is-muted', muted);
+  syncHudButton(ui.mute, muted ? 'Sound off' : 'Sound on');
 }
 function syncTimeButton() {
-  const label = timeMode === 'night' ? 'Night' : 'Day';
-  ui.timeToggle.textContent = timeMode === 'night' ? '☾' : '☼';
-  ui.timeToggle.setAttribute('aria-label', label);
-  ui.timeToggle.title = label;
+  const isNight = timeMode === 'night';
+  ui.timeToggle.classList.toggle('is-night', isNight);
+  syncHudButton(ui.timeToggle, isNight ? 'Night' : 'Day');
+}
+function syncHudButton(button, label) {
+  button.querySelector('.hud-label').textContent = label;
+  button.setAttribute('aria-label', label);
+  button.title = label;
 }
 syncMuteButton();
 const menuMusic = document.getElementById('menu-music');
@@ -328,9 +331,7 @@ for (const option of RIDER_OPTIONS) {
 syncRiderUi();
 function syncMusicUi() {
   const label = `Music: ${audio.music.label}`;
-  ui.music.textContent = '♫';
-  ui.music.setAttribute('aria-label', label);
-  ui.music.title = label;
+  syncHudButton(ui.music, label);
   audio.setRain(audio.music.id === 'music-rain');
   world.setRain(audio.music.id === 'music-rain', initialQuality >= 2);
   syncYouTubeUi();
