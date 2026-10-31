@@ -15,23 +15,83 @@ import {
 } from '../src/physics/constants.js';
 import { createBike, stepBike } from '../src/physics/bike.js';
 import { airTimeBonus } from '../src/feel.js';
+import { OTTER_HEIGHT_RATIO } from '../src/world/obstacles.js';
 import { createPlaneTerrain, createStepDropTerrain } from './helpers.js';
 
 const noInput = { throttle: 0, brake: 0, steer: 0 };
 
-function fallFrom(height, grade, speed) {
-  const terrain = createPlaneTerrain(grade);
-  const bike = createBike({ x: 0, z: 0 }, terrain);
-  bike.y += height;
-  bike.airborne = true;
-  bike.v = speed;
-  for (let elapsed = 0; elapsed < 5 && bike.airborne; elapsed += DT) {
-    stepBike(bike, noInput, terrain, [], DT);
-  }
-  return bike;
+function createHeightTerrain(heightAt) {
+  return {
+    heightAt,
+    surfaceAt: () => ({ crr: CRR_TRAIL, mu: MU_TRAIL, outOfBounds: false }),
+    centerX: () => 0,
+    courseLength: 900,
+    halfWidth: () => 100,
+  };
 }
 
 describe('bike physics', () => {
+  it('increases load in a sag and decreases it over a crest', () => {
+    const sagTerrain = createHeightTerrain((_x, z) => 0.02 * (z + 50) ** 2);
+    const sag = createBike({ x: 0, z: -50 }, sagTerrain);
+    sag.v = 20;
+    for (let elapsed = 0; elapsed < 0.375; elapsed += DT) {
+      stepBike(sag, noInput, sagTerrain, [], DT);
+    }
+    expect(sag.load).toBeGreaterThan(1.15);
+
+    const crestTerrain = createHeightTerrain((_x, z) => -0.02 * (z + 50) ** 2);
+    const crest = createBike({ x: 0, z: -50 }, crestTerrain);
+    crest.v = 8;
+    for (let elapsed = 0; elapsed < 0.3; elapsed += DT) {
+      stepBike(crest, noInput, crestTerrain, [], DT);
+    }
+    expect(crest.load).toBeLessThan(0.85);
+  });
+
+  it('lets steep camber steer the bike downhill without affecting gentle camber', () => {
+    const steepTerrain = createHeightTerrain((x) => 0.8 * x);
+    const steep = createBike({ x: 0, z: 0 }, steepTerrain);
+    steep.v = 12;
+    for (let elapsed = 0; elapsed < 1; elapsed += DT) {
+      stepBike(steep, noInput, steepTerrain, [], DT);
+    }
+    expect(steep.heading).toBeLessThan(-0.01);
+    expect(steep.crashed).toBeNull();
+
+    const gentleTerrain = createHeightTerrain((x) => 0.2 * x);
+    const gentle = createBike({ x: 0, z: 0 }, gentleTerrain);
+    gentle.v = 12;
+    for (let elapsed = 0; elapsed < 1; elapsed += DT) {
+      stepBike(gentle, noInput, gentleTerrain, [], DT);
+    }
+    expect(Math.abs(gentle.heading)).toBeLessThan(0.01);
+  });
+
+  it('lets a right bank increase right-turn yaw and never washes out from camber alone', () => {
+    const flatTerrain = createHeightTerrain(() => 0);
+    const bankedTerrain = createHeightTerrain((x) => -0.3 * x);
+    const flat = createBike({ x: 0, z: 0 }, flatTerrain);
+    const banked = createBike({ x: 0, z: 0 }, bankedTerrain);
+    const fullSteer = Math.atan((1.1 * MU_TRAIL * G * WHEELBASE) / 18 ** 2);
+    flat.v = 18;
+    banked.v = 18;
+    flat.steer = fullSteer;
+    banked.steer = fullSteer;
+    stepBike(flat, { ...noInput, steer: 1 }, flatTerrain, [], DT);
+    stepBike(banked, { ...noInput, steer: 1 }, bankedTerrain, [], DT);
+    expect(flat.slipping).toBe(true);
+    expect(banked.heading).toBeGreaterThan(flat.heading);
+
+    const steepTerrain = createHeightTerrain((x) => 0.8 * x);
+    const steep = createBike({ x: 0, z: 0 }, steepTerrain);
+    steep.v = 15;
+    for (let elapsed = 0; elapsed < 2; elapsed += DT) {
+      stepBike(steep, noInput, steepTerrain, [], DT);
+    }
+    expect(steep.crashed).not.toBe('washout');
+  });
+
   it('converges to analytic terminal velocity on a 30% grade', () => {
     const terrain = createPlaneTerrain(0.3);
     const bike = createBike({ x: 0, z: 0 }, terrain);
@@ -230,10 +290,10 @@ describe('bike physics', () => {
     expect(lowSpeed.crashed).not.toBe('washout');
   });
 
-  it('launches from a step drop and distinguishes a hard landing', () => {
+  it('lands from step drops without crashing', () => {
     for (const { drop, expectedCrash } of [
       { drop: 1.5, expectedCrash: null },
-      { drop: 18, expectedCrash: 'hard landing' },
+      { drop: 18, expectedCrash: null },
     ]) {
       const terrain = createStepDropTerrain(drop);
       const bike = createBike({ x: 0, z: 0 }, terrain);
@@ -244,6 +304,7 @@ describe('bike physics', () => {
         wasAirborne ||= bike.airborne;
       }
       expect(wasAirborne).toBe(true);
+      expect(bike.airborne).toBe(false);
       expect(bike.crashed).toBe(expectedCrash);
       if (drop === 1.5) {
         expect(bike.airborne).toBe(false);
@@ -275,32 +336,24 @@ describe('bike physics', () => {
     expect(bike.landingImpact).toBe(0);
   });
 
-  it('crashes on a 17m fall onto flat ground', () => {
-    const bike = fallFrom(17, 0, 10);
-
-    expect(bike.airborne).toBe(false);
-    expect(bike.crashed).toBe('hard landing');
-  });
-
-  it('survives a 15m/s impact but crashes at 17m/s', () => {
-    const landAtImpact = (speed) => {
+  it('lands from 17m and 30m falls without crashing or losing horizontal speed', () => {
+    for (const height of [17, 30]) {
       const terrain = createPlaneTerrain();
       const bike = createBike({ x: 0, z: 0 }, terrain);
-      bike.y += 0.02;
+      bike.y += height;
       bike.airborne = true;
       bike.v = 10;
-      bike.vy = -speed;
-      stepBike(bike, noInput, terrain, [], DT);
-      return bike;
-    };
-    const mediumImpact = landAtImpact(15);
-    const hardImpact = landAtImpact(17);
+      let speedBeforeLanding = bike.v;
+      for (let elapsed = 0; elapsed < 5 && bike.airborne; elapsed += DT) {
+        speedBeforeLanding = bike.v;
+        stepBike(bike, noInput, terrain, [], DT);
+      }
 
-    expect(mediumImpact.crashed).toBeNull();
-    expect(mediumImpact.heavyLanding).toBe(true);
-    expect(mediumImpact.landingImpact).toBeGreaterThan(15);
-    expect(hardImpact.crashed).toBe('hard landing');
-    expect(hardImpact.landingImpact).toBeGreaterThan(17);
+      expect(bike.airborne).toBe(false);
+      expect(bike.crashed).toBeNull();
+      expect(bike.heavyLanding).toBe(true);
+      expect(bike.v).toBeGreaterThan(speedBeforeLanding * 0.99);
+    }
   });
 
   it('does not scrub speed landing onto a 0.3 downslope at 18m/s', () => {
@@ -393,17 +446,40 @@ describe('bike physics', () => {
     expect(foliageBike.v).toBeCloseTo(baseline.v, 8);
   });
 
-  it('hits an otter even when the bike is airborne above it', () => {
+  it('passes above an otter but Ottifies on contact below its visible height', () => {
     const terrain = createPlaneTerrain();
     const rock = { type: 'rock', x: 0, z: -1, r: 1.05, h: 0.9 };
+    const bikeAtClearance = (clearance) => {
+      const bike = createBike({ x: 0, z: 0 }, terrain);
+      bike.v = 8;
+      bike.y += clearance;
+      bike.airborne = true;
+      for (let elapsed = 0; elapsed < 1 && !bike.crashed; elapsed += DT) {
+        stepBike(bike, noInput, terrain, [rock], DT);
+      }
+      return bike;
+    };
+    expect(bikeAtClearance(1.5).crashed).toBeNull();
+    expect(bikeAtClearance(0.4).crashed).toBe('rock');
+  });
+
+  it('does not let a flat-ground hop clear the smallest otter', () => {
+    const terrain = createPlaneTerrain();
+    const otter = {
+      type: 'rock',
+      x: 0,
+      z: -2.5,
+      r: 0.6,
+      h: OTTER_HEIGHT_RATIO * 2 * 0.6,
+    };
     const bike = createBike({ x: 0, z: 0 }, terrain);
-    bike.v = 8;
-    bike.y += 1.5;
-    bike.airborne = true;
+    bike.v = 10;
+    stepBike(bike, { ...noInput, jump: 1 }, terrain, [otter], DT);
     for (let elapsed = 0; elapsed < 1 && !bike.crashed; elapsed += DT) {
-      stepBike(bike, noInput, terrain, [rock], DT);
+      stepBike(bike, noInput, terrain, [otter], DT);
     }
     expect(bike.crashed).toBe('rock');
+    expect(otter.h).toBeGreaterThan(0.62);
   });
 
   it('clears a log with a flat-ground hop at speed', () => {

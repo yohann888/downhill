@@ -27,8 +27,8 @@ Rules:
 - Output only the line.
 """
 ELEVENLABS_VOICE_ID = "TX3LPaxmHKxFdv7VOQHJ"
-TOP_KEY = "top"
-BEST_GHOST_KEY = "ghost:best"
+TOP_KEY = "top:v2"
+BEST_GHOST_KEY = "ghost:best:v2"
 DAILY_TTS_LIMIT = 80
 
 app = modal.App("downhill-api")

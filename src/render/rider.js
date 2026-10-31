@@ -198,6 +198,12 @@ export function createRiderModel() {
   const helmetMat = new THREE.MeshStandardMaterial({ color: 0xf2f2f2, roughness: 0.4 });
 
   const root = new THREE.Group();
+  const headlamp = new THREE.SpotLight(0xffe3ba, 180, 40, 0.5, 0.45, 2);
+  headlamp.position.set(0, 1.68, -0.35);
+  headlamp.target.position.set(0, 1.15, -18);
+  headlamp.castShadow = false;
+  headlamp.visible = false;
+  root.add(headlamp, headlamp.target);
   const procedural = new THREE.Group();
   root.add(procedural);
   const fallbackBike = new THREE.Group();
@@ -699,6 +705,9 @@ export function createRiderModel() {
 
   return {
     root,
+    setHeadlamp(enabled) {
+      headlamp.visible = enabled;
+    },
     setAssets,
     setWavePose(active, time) {
       wavePoseActive = active;

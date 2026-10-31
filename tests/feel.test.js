@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { airTimeBonus, nextQualityLevel, slowMoTarget } from '../src/feel.js';
+import {
+  airTimeBonus,
+  heightBonus,
+  nextQualityLevel,
+  slowMoTarget,
+} from '../src/feel.js';
 
 describe('slowMoTarget', () => {
   it('slows only during sufficiently high, sustained airtime', () => {
@@ -27,5 +32,16 @@ describe('airTimeBonus', () => {
     expect(airTimeBonus(5.0)).toBe(6.0);
     expect(airTimeBonus(Number.NaN)).toBe(0);
     expect(airTimeBonus(Number.POSITIVE_INFINITY)).toBe(0);
+  });
+});
+
+describe('heightBonus', () => {
+  it('awards a capped bonus for jumps above 3 metres', () => {
+    expect(heightBonus(2)).toBe(0);
+    expect(heightBonus(3)).toBe(0);
+    expect(heightBonus(5)).toBe(1);
+    expect(heightBonus(11)).toBe(4);
+    expect(heightBonus(20)).toBe(4);
+    expect(heightBonus(Number.NaN)).toBe(0);
   });
 });

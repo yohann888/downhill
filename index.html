@@ -26,30 +26,66 @@
         </div>
       </div>
       <div id="flash"></div>
-      <button id="mute" type="button"></button>
+      <a id="brand-badge" href="https://devin.ai" target="_blank" rel="noopener"><img src="./assets/otter-logo.png" alt=""><span>Built with Devin</span></a>
+      <div id="audio-controls">
+        <button id="mute" type="button"></button>
+        <button id="music-select" type="button"></button>
+        <button id="time-toggle" type="button"></button>
+      </div>
       <label id="volume-label" for="volume">Volume
         <input id="volume" type="range" min="0" max="1" step="0.01" />
       </label>
     </div>
-    <div id="overlay">
+    <div id="overlay" class="start">
       <div class="panel">
+        <div id="start-menu">
+          <p class="arcade-presents">Aloomii presents</p>
+          <div class="arcade-logo">
+            <h1 class="arcade-title" data-text="DOWNHILL">DOWNHILL</h1>
+            <div class="arcade-burst"><span>Don't get<br>Ottified!</span></div>
+          </div>
+          <p class="arcade-ribbon">Mountain bike mayhem</p>
+          <div class="menu-grid">
+            <section class="menu-card">
+              <h2>High scores</h2>
+              <div id="start-leaderboard"><p class="menu-empty">Loading...</p></div>
+              <p id="start-best" class="menu-best"></p>
+            </section>
+            <section class="menu-card">
+              <h2>How to play</h2>
+              <p class="menu-goal">Race 900 m to the bottom. Dodge the otters, hop the logs, miss the trunks. Big air cuts your time. Crashes add 3 s.</p>
+              <ul class="menu-keys">
+                <li><span><kbd>W</kbd><kbd>S</kbd></span>Pedal, brake</li>
+                <li><span><kbd>A</kbd><kbd>D</kbd></span>Steer</li>
+                <li><span><kbd>Space</kbd></span>Jump</li>
+                <li><span><kbd>R</kbd></span>Respawn</li>
+                <li><span><kbd>N</kbd><kbd>L</kbd></span>Music, day/night</li>
+              </ul>
+            </section>
+          </div>
+          <div id="menu-music" class="menu-music" aria-label="Music"><span>Music</span></div>
+        </div>
         <h1 id="overlay-title">Downhill</h1>
-        <p id="overlay-body">W / Up: pedal &nbsp; S / Down: brake &nbsp; A D / Left Right: steer</p>
-        <div id="start-leaderboard" hidden></div>
+        <p id="overlay-body"></p>
         <form id="finish-controls" hidden>
           <label for="rider-name">Name</label>
           <input id="rider-name" name="name" maxlength="12" autocomplete="nickname" />
           <button type="submit">Submit</button>
           <div id="finish-leaderboard"></div>
         </form>
-        <button id="overlay-button" type="button">Ride</button>
+        <button id="overlay-button" type="button">Press start</button>
+        <button id="menu-button" type="button" class="menu-secondary">Main menu</button>
+        <p class="arcade-credit">Built with Devin &middot; &copy; 2026 Aloomii</p>
       </div>
     </div>
     <div id="commentary-subtitle" aria-live="polite"></div>
     <section id="wave-panel" hidden aria-label="Submitted score ranks">
       <h2>Leaderboard</h2>
       <div id="wave-leaderboard"></div>
-      <button id="wave-ride-again" type="button">Ride again</button>
+      <div class="wave-actions">
+        <button id="wave-ride-again" type="button">Ride again</button>
+        <button id="wave-menu" type="button" class="menu-secondary">Main menu</button>
+      </div>
     </section>
     <div id="touch">
       <div class="touch-group">

@@ -27,7 +27,9 @@
     { "name": "forest-loop", "prompt": "alpine forest ambience, distant birds, light breeze in pine trees", "seconds": 10, "loop": true }
   ],
   "music": [
-    { "name": "music-ride", "prompt": "epic cinematic space opera orchestral theme with soaring French horn and brass fanfare, sweeping strings and choir, fused with uplifting 138 BPM progressive trance, supersaw lead, rolling bassline, driving four on the floor kick, a big build and euphoric drop, instrumental, no vocals", "seconds": 90 }
+    { "name": "music-ride", "label": "Space trance", "prompt": "epic cinematic space opera orchestral theme with soaring French horn and brass fanfare, sweeping strings and choir, fused with uplifting 138 BPM progressive trance, supersaw lead, rolling bassline, driving four on the floor kick, a big build and euphoric drop, instrumental, no vocals", "seconds": 90 },
+    { "name": "music-lofi", "label": "Lo-fi", "prompt": "mellow lo-fi hip hop beat with warm nylon acoustic guitar, soft vinyl crackle, dusty laid back drums at 82 BPM, mellow electric piano chords, calm and cozy mountain sunset mood, instrumental, no vocals", "seconds": 75 },
+    { "name": "music-punk", "label": "Punk", "prompt": "fast aggressive skate punk rock at 190 BPM, loud distorted power chord guitars, pounding drums with driving snare, gritty bass, raw energetic garage sound, instrumental, no vocals", "seconds": 75 }
   ],
   "voice": {
     "style": "energetic male sports commentator",

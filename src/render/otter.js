@@ -60,7 +60,7 @@ function installMotionShader(material, uniforms) {
       float pawFront = otterSmooth(0.02, 0.052, position.z);
       float pawWeight = pawX * pawY * pawFront;
       float worldPhase = dot(modelMatrix[3].xyz, vec3(1.7, 2.3, 3.1));
-      transformed.y += sin(uOtterTime * 56.5487 + worldPhase) * 0.01 * pawWeight;
+      transformed.y += sin(uOtterTime * 15.708 + worldPhase) * 0.01 * pawWeight;
 
       float waveX = otterSmooth(-0.52, -0.4, position.x)
         * (1.0 - otterSmooth(-0.25, -0.13, position.x));
@@ -73,8 +73,20 @@ function installMotionShader(material, uniforms) {
       waveOffset = otterRotateZ(waveOffset, waveAngle);
       transformed = mix(transformed, wavePivot + waveOffset, uOtterWave * waveWeight);`,
     );
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <map_fragment>',
+      `#include <map_fragment>
+      {
+        vec3 c = diffuseColor.rgb;
+        float lum = dot(c, vec3(0.2126, 0.7152, 0.0722));
+        float warm = clamp((c.r - c.b) / max(c.r, 1e-4), 0.0, 1.0);
+        float fur = smoothstep(0.45, 0.7, warm) * smoothstep(0.006, 0.02, lum);
+        vec3 logoOrange = vec3(0.973, 0.371, 0.059) / 0.476;
+        diffuseColor.rgb = mix(c, logoOrange * clamp(lum * 2.6, 0.0, 0.48), fur);
+      }`,
+    );
   };
-  material.customProgramCacheKey = () => 'downhill-otter-motion-v1';
+  material.customProgramCacheKey = () => 'downhill-otter-motion-v2';
   material.needsUpdate = true;
 }
 

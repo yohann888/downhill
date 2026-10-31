@@ -13,7 +13,7 @@ import {
   WHEELBASE,
 } from '../src/physics/constants.js';
 import { createBike, stepBike } from '../src/physics/bike.js';
-import { createObstacles, updateMovingObstacles } from '../src/world/obstacles.js';
+import { createObstacles, OTTER_HEIGHT_RATIO, updateMovingObstacles } from '../src/world/obstacles.js';
 import { createTerrain } from '../src/world/terrain.js';
 import { createPlaneTerrain } from './helpers.js';
 
@@ -75,6 +75,11 @@ function distanceToObstacle(point, obstacle) {
   );
 }
 
+function returnPathOffset(path, s) {
+  const t = Math.max(0, Math.min(1, (s - path.s0) / path.L));
+  return path.U0 * (1 - t * t * (3 - 2 * t));
+}
+
 describe('terrain and obstacle generation', () => {
   it('is deterministic for identical scripted runs', () => {
     expect(scriptedRun(17)).toEqual(scriptedRun(17));
@@ -82,8 +87,12 @@ describe('terrain and obstacle generation', () => {
 
   it('has the target drop and a continuous centerline height except at kicker lips', () => {
     const terrain = createTerrain();
-    expect(terrain.totalDrop).toBeGreaterThanOrEqual(200);
-    expect(terrain.totalDrop).toBeLessThanOrEqual(260);
+    expect(terrain.courseLength).toBe(900);
+    expect(terrain.checkpoints.map((checkpoint) => checkpoint.s)).toEqual([
+      150, 300, 450, 600, 750, 900,
+    ]);
+    expect(terrain.totalDrop).toBeGreaterThanOrEqual(150);
+    expect(terrain.totalDrop).toBeLessThanOrEqual(200);
 
     let maxStep = 0;
     for (let s = 0; s < terrain.courseLength; s += 0.1) {
@@ -101,9 +110,37 @@ describe('terrain and obstacle generation', () => {
     expect(maxStep).toBeLessThan(0.5);
   });
 
+  it('joins return paths to the trail with flat benches and trail grip', () => {
+    const terrain = createTerrain(17);
+    expect(terrain.returnPaths.length).toBeGreaterThan(0);
+    for (const path of terrain.returnPaths) {
+      const joinS = path.s0 + path.L - 0.5;
+      const joinZ = -joinS;
+      const joinX =
+        terrain.centerX(joinZ) +
+        path.side * (terrain.halfWidth(joinZ) + 0.5);
+      expect(terrain.pathWeightAt(joinX, joinZ)).toBeGreaterThan(0.5);
+
+      const s = path.s0 + path.L / 2;
+      const z = -s;
+      const hw = terrain.halfWidth(z);
+      const offset = returnPathOffset(path, s);
+      const center = terrain.centerX(z) + path.side * (hw + offset);
+      const inner = center - path.side * 0.8;
+      const outer = center + path.side * 0.8;
+      expect(Math.abs(terrain.heightAt(inner, z) - terrain.heightAt(outer, z))).toBeLessThan(
+        0.05,
+      );
+
+      const surface = terrain.surfaceAt(center, z);
+      expect(surface.crr).toBe(CRR_TRAIL);
+      expect(surface.mu).toBe(MU_TRAIL);
+    }
+  });
+
   it('blends off-trail surface properties across a shoulder before the boundary', () => {
     const terrain = createTerrain(17);
-    for (const z of [-60, -400, -700, -1150]) {
+    for (const z of [-60, -300, -600, -850]) {
       const center = terrain.centerX(z);
       const hw = terrain.halfWidth(z);
       const shoulder = terrain.surfaceAt(center + hw + 2, z);
@@ -126,6 +163,19 @@ describe('terrain and obstacle generation', () => {
         previousCrr = crr;
       }
     }
+  });
+
+  it('only crashes for crossing the expanded 24m boundary', () => {
+    const terrain = createTerrain(17);
+    const z = -60;
+    const edge = terrain.centerX(z) + terrain.halfWidth(z);
+    const shoulderBike = createBike({ x: edge + 13, z }, terrain);
+    stepBike(shoulderBike, { throttle: 0, brake: 0, steer: 0 }, terrain, [], DT);
+    expect(shoulderBike.crashed).toBeNull();
+
+    const outsideBike = createBike({ x: edge + OUT_OF_BOUNDS + 1, z }, terrain);
+    stepBike(outsideBike, { throttle: 0, brake: 0, steer: 0 }, terrain, [], DT);
+    expect(outsideBike.crashed).toBe('off course');
   });
 
   it('places obstacles in order with trail exclusion zones and clear edge gaps', () => {
@@ -154,8 +204,7 @@ describe('terrain and obstacle generation', () => {
         const offset = Math.abs(obstacle.x - terrain.centerX(obstacle.z));
         expect(obstacle.r).toBeGreaterThanOrEqual(0.6 - 1e-9);
         expect(obstacle.r).toBeLessThanOrEqual(1.35 + 1e-9);
-        expect(obstacle.h).toBeGreaterThanOrEqual(0.6 - 1e-9);
-        expect(obstacle.h).toBeLessThanOrEqual(1.35 + 1e-9);
+        expect(obstacle.h).toBeCloseTo(OTTER_HEIGHT_RATIO * 2 * obstacle.r);
         expect(width - offset - obstacle.r).toBeGreaterThanOrEqual(0.1 - 1e-9);
       }
     }
@@ -178,7 +227,37 @@ describe('terrain and obstacle generation', () => {
       const offset = Math.abs(tree.x - terrain.centerX(tree.z));
       const width = terrain.halfWidth(tree.z);
       expect(offset).toBeGreaterThanOrEqual(width + 0.5);
-      expect(offset).toBeLessThanOrEqual(width + 8);
+      expect(offset).toBeLessThanOrEqual(width + 22);
+    }
+  });
+
+  it('keeps the outer tree band clear of return paths', () => {
+    const terrain = createTerrain(17);
+    const trees = createObstacles(terrain, 27).filter((obstacle) => {
+      if (obstacle.type !== 'tree') return false;
+      const offset = Math.abs(obstacle.x - terrain.centerX(obstacle.z));
+      return offset - terrain.halfWidth(obstacle.z) >= 6.5;
+    });
+    expect(trees.length).toBeGreaterThan(0);
+
+    for (const tree of trees) {
+      const s = -tree.z;
+      const side = Math.sign(tree.x - terrain.centerX(tree.z));
+      expect(Math.abs(tree.x - terrain.centerX(tree.z)) - terrain.halfWidth(tree.z))
+        .toBeGreaterThanOrEqual(7);
+      expect(Math.abs(tree.x - terrain.centerX(tree.z)) - terrain.halfWidth(tree.z))
+        .toBeLessThanOrEqual(22);
+      expect(terrain.pathWeightAt(tree.x, tree.z)).toBe(0);
+
+      for (const path of terrain.returnPaths) {
+        if (path.side !== side || s < path.s0 - 10 || s > path.s0 + path.L) {
+          continue;
+        }
+        const pathX =
+          terrain.centerX(tree.z) +
+          side * (terrain.halfWidth(tree.z) + returnPathOffset(path, s));
+        expect(Math.abs(tree.x - pathX)).toBeGreaterThanOrEqual(3);
+      }
     }
   });
 

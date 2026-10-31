@@ -16,6 +16,7 @@ async function request(path, { body, timeout = 6000 } = {}) {
       body: body ? JSON.stringify(body) : undefined,
       signal: controller.signal,
     });
+    clearTimeout(timer);
     if (!response.ok) return null;
     return await response.json();
   } catch {
@@ -26,7 +27,7 @@ async function request(path, { body, timeout = 6000 } = {}) {
 }
 
 export function getLeaderboard() {
-  return request('/leaderboard');
+  return request('/leaderboard', { timeout: 15000 });
 }
 
 export async function postRun(run) {

@@ -2,6 +2,12 @@ import { createRandom } from './noise.js';
 
 const TREE_TRUNK_RADII = [0.32, 0.15];
 const TREE_CANOPY_RADII = [2.64, 2];
+export const OTTER_HEIGHT_RATIO = 0.629841;
+
+const smoothstep = (edge0, edge1, value) => {
+  const t = Math.max(0, Math.min(1, (value - edge0) / (edge1 - edge0)));
+  return t * t * (3 - 2 * t);
+};
 
 function inKickerExclusion(s, kickers) {
   return kickers.some((kicker) => s >= kicker.s - 25 && s <= kicker.s + 15);
@@ -72,7 +78,7 @@ export function createObstacles(terrain, seed = 7) {
       r,
       h:
         type === 'rock'
-          ? (0.4 + random() * 0.5) * 1.5
+          ? OTTER_HEIGHT_RATIO * 2 * Math.max(r, 0.4)
           : type === 'stump'
             ? 0.5
             : 0.4,
@@ -103,6 +109,46 @@ export function createObstacles(terrain, seed = 7) {
     );
   }
 
+  const outerTreeRandom = createRandom(seed ^ 0x5bd1e995);
+  for (const side of [-1, 1]) {
+    for (let s = 70; s <= terrain.courseLength - 40; ) {
+      const z = -s;
+      const hw = terrain.halfWidth(z);
+      const x = terrain.centerX(z) + side * (hw + 7 + outerTreeRandom() * 15);
+      const onPath = terrain.pathWeightAt(x, z) > 0;
+      const nearPathCenterline = terrain.returnPaths.some((path) => {
+        if (path.side !== side || s < path.s0 - 10 || s > path.s0 + path.L) {
+          return false;
+        }
+        const offset =
+          path.U0 *
+          (1 - smoothstep(path.s0, path.s0 + path.L, s));
+        const pathX = terrain.centerX(z) + side * (hw + offset);
+        return Math.abs(x - pathX) < 3;
+      });
+
+      if (!onPath && !nearPathCenterline) {
+        const treeVariant = Math.floor(outerTreeRandom() * TREE_TRUNK_RADII.length);
+        const treeScale = 0.9 + outerTreeRandom() * 0.5;
+        obstacles.push({
+          type: 'tree',
+          x,
+          z,
+          h: 10,
+          rot: outerTreeRandom() * Math.PI * 2,
+          treeScale,
+          treeVariant,
+          r: TREE_TRUNK_RADII[treeVariant] * treeScale,
+          foliageRadius: Math.min(
+            1.6,
+            TREE_CANOPY_RADII[treeVariant] * treeScale,
+          ),
+        });
+      }
+      s += 12 + outerTreeRandom() * 10;
+    }
+  }
+
   for (const obstacle of obstacles) {
     if (obstacle.type !== 'rock') continue;
     const center = terrain.centerX(obstacle.z);
@@ -118,6 +164,7 @@ export function createObstacles(terrain, seed = 7) {
       phase: random() * Math.PI * 2,
     };
   }
+  obstacles.sort((a, b) => b.z - a.z);
   updateMovingObstacles(obstacles, 0);
   return obstacles;
 }

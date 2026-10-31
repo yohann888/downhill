@@ -10,7 +10,12 @@ import { createDust } from './render/dust.js';
 import { createAudio } from './audio.js';
 import { loadModels } from './render/assets.js';
 import { createPost } from './render/post.js';
-import { airTimeBonus, nextQualityLevel, slowMoTarget } from './feel.js';
+import {
+  airTimeBonus,
+  heightBonus,
+  nextQualityLevel,
+  slowMoTarget,
+} from './feel.js';
 import { getCommentary, getLeaderboard, postRun } from './api.js';
 import { buildRankOverlayRows } from './leaderboard.js';
 import { createRecorder, sampleGhost } from './ghost.js';
@@ -22,6 +27,13 @@ const qualityMode = queryParams.get('quality');
 const initialQuality = qualityMode === 'low' ? 3 : 0;
 const autoQualityEnabled = qualityMode !== 'high';
 const debug = queryParams.has('debug');
+const requestedTime = queryParams.get('time');
+const storedTime = localStorage.getItem('downhill.time');
+let timeMode = ['day', 'night'].includes(requestedTime)
+  ? requestedTime
+  : ['day', 'night'].includes(storedTime)
+    ? storedTime
+    : 'day';
 
 const canvas = document.getElementById('game');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -68,7 +80,9 @@ const ui = {
   title: document.getElementById('overlay-title'),
   body: document.getElementById('overlay-body'),
   button: document.getElementById('overlay-button'),
+  menuButton: document.getElementById('menu-button'),
   startLeaderboard: document.getElementById('start-leaderboard'),
+  startBest: document.getElementById('start-best'),
   finishForm: document.getElementById('finish-controls'),
   nameInput: document.getElementById('rider-name'),
   submitButton: document.querySelector('#finish-controls button[type="submit"]'),
@@ -76,14 +90,38 @@ const ui = {
   wavePanel: document.getElementById('wave-panel'),
   waveLeaderboard: document.getElementById('wave-leaderboard'),
   rideAgain: document.getElementById('wave-ride-again'),
+  waveMenu: document.getElementById('wave-menu'),
   hud: document.getElementById('hud'),
   touch: document.getElementById('touch'),
   ghostStatus: document.getElementById('ghost-status'),
   subtitle: document.getElementById('commentary-subtitle'),
   mute: document.getElementById('mute'),
+  music: document.getElementById('music-select'),
+  timeToggle: document.getElementById('time-toggle'),
   volume: document.getElementById('volume'),
 };
 ui.mute.textContent = audio.muted ? 'Sound off' : 'Sound on';
+const menuMusic = document.getElementById('menu-music');
+function syncMusicUi() {
+  ui.music.textContent = `Music: ${audio.music.label}`;
+  for (const button of menuMusic.querySelectorAll('button')) {
+    button.setAttribute('aria-pressed', String(button.dataset.track === audio.music.id));
+  }
+}
+for (const track of audio.tracks) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.dataset.track = track.id;
+  button.textContent = track.label;
+  button.addEventListener('click', () => {
+    audio.setMusic(track.id);
+    syncMusicUi();
+    button.blur();
+  });
+  menuMusic.append(button);
+}
+syncMusicUi();
+ui.timeToggle.textContent = timeMode === 'night' ? 'Night' : 'Day';
 for (const checkpoint of terrain.checkpoints) {
   const mark = document.createElement('span');
   const progress = Math.max(0, Math.min(1, -checkpoint.z / terrain.courseLength));
@@ -92,6 +130,23 @@ for (const checkpoint of terrain.checkpoints) {
   ui.checkpointMarks.append(mark);
 }
 ui.mute.addEventListener('click', () => { ui.mute.textContent = audio.toggleMute() ? 'Sound off' : 'Sound on'; ui.mute.blur(); });
+ui.music.addEventListener('click', () => {
+  audio.nextMusic();
+  syncMusicUi();
+  ui.music.blur();
+});
+function setTimeMode(mode, persist = true) {
+  timeMode = mode === 'night' ? 'night' : 'day';
+  world.setTimeOfDay(timeMode);
+  model.setHeadlamp(timeMode === 'night');
+  ui.timeToggle.textContent = timeMode === 'night' ? 'Night' : 'Day';
+  if (persist) localStorage.setItem('downhill.time', timeMode);
+}
+ui.timeToggle.addEventListener('click', () => {
+  setTimeMode(timeMode === 'night' ? 'day' : 'night');
+  ui.timeToggle.blur();
+});
+setTimeMode(timeMode, false);
 ui.volume.value = String(audio.volume);
 ui.volume.addEventListener('input', () => audio.setVolume(Number(ui.volume.value)));
 
@@ -111,6 +166,20 @@ const KEYMAP = {
   KeyW: 'throttle', ArrowUp: 'throttle', KeyS: 'brake', ArrowDown: 'brake',
 };
 window.addEventListener('keydown', (e) => {
+  if (e.code === 'Escape' && (game.mode === 'finished' || game.waveMode)) {
+    e.preventDefault();
+    showMenu();
+    return;
+  }
+  if (e.target === ui.nameInput) return;
+  if (e.code === 'KeyN' && !e.repeat) {
+    ui.music.click();
+    e.preventDefault();
+  }
+  if (e.code === 'KeyL' && !e.repeat) {
+    ui.timeToggle.click();
+    e.preventDefault();
+  }
   if (game.waveMode) {
     if (e.code === 'Enter' || e.code === 'KeyR') start();
     e.preventDefault();
@@ -156,6 +225,8 @@ ui.finishForm.addEventListener('submit', (event) => {
   submitRun();
 });
 ui.rideAgain.addEventListener('click', () => start());
+ui.menuButton.addEventListener('click', () => showMenu());
+ui.waveMenu.addEventListener('click', () => showMenu());
 
 const readInput = () => ({
   throttle: keys.throttle ? 1 : 0,
@@ -175,7 +246,9 @@ const game = {
   crashTimer: 0,
   maxSpeed: 0,
   airTime: 0,
+  airPeak: 0,
   maxAir: 0,
+  maxHeight: 0,
   crashes: 0,
   otterHits: 0,
   timeScale: 1,
@@ -189,7 +262,7 @@ const game = {
   leaderboardWarmed: false,
   waveMode: false,
   trauma: 0,
-  best: Number(localStorage.getItem('downhill-best')) || null,
+  best: Number(localStorage.getItem('downhill-best-900')) || null,
 };
 let slowMoRealTime = 0;
 let slowMoLocked = false;
@@ -217,6 +290,8 @@ function start() {
   placeBike(p.x, p.z, p.heading, 0);
   game.mode = 'riding';
   game.time = 0;
+  game.airTime = 0;
+  game.airPeak = 0;
   updateMovingObstacles(obstacles, 0);
   world.update(0);
   game.penalty = 0;
@@ -224,6 +299,7 @@ function start() {
   game.checkpoint = -1;
   game.maxSpeed = 0;
   game.maxAir = 0;
+  game.maxHeight = 0;
   game.crashes = 0;
   game.otterHits = 0;
   game.runId += 1;
@@ -244,7 +320,6 @@ function start() {
   ui.wavePanel.hidden = true;
   ui.hud.classList.remove('wave-mode');
   ui.touch.hidden = false;
-  ui.startLeaderboard.hidden = leaderboardEntries.length === 0;
   ui.overlay.classList.add('hidden');
   snapCamera();
 }
@@ -256,6 +331,7 @@ function respawn(manual) {
   placeBike(p.x, p.z, p.heading, cp ? 5 : 0);
   model.resetCrash();
   game.airTime = 0;
+  game.airPeak = 0;
   game.timeScale = 1;
   slowMoRealTime = 0;
   slowMoLocked = false;
@@ -273,7 +349,6 @@ function flash(text, ms = 1200) {
 
 const CRASH_TEXT = {
   washout: 'Washed out',
-  'hard landing': 'Cased it',
   'off course': 'Off course',
   rock: 'Ottified!',
   stump: 'Hit a stump',
@@ -282,10 +357,58 @@ const CRASH_TEXT = {
 };
 
 function showOverlay(title, body, button) {
+  ui.overlay.classList.remove('start');
   ui.title.textContent = title;
   ui.body.textContent = body;
   ui.button.textContent = button;
   ui.overlay.classList.remove('hidden');
+}
+
+function renderStartBoard(empty = 'No times yet. Set the first one.') {
+  const board = ui.startLeaderboard;
+  board.replaceChildren();
+  if (!leaderboardEntries.length) {
+    const note = document.createElement('p');
+    note.className = 'menu-empty';
+    note.textContent = empty;
+    board.append(note);
+  } else {
+    const list = document.createElement('ol');
+    list.className = 'arcade-scores';
+    const places = ['1ST', '2ND', '3RD', '4TH', '5TH'];
+    leaderboardEntries.slice(0, 5).forEach((entry, index) => {
+      const row = document.createElement('li');
+      for (const [cls, text] of [
+        ['place', places[index]],
+        ['name', entry.name],
+        ['time', Number(entry.time).toFixed(2)],
+      ]) {
+        const cell = document.createElement('span');
+        cell.className = cls;
+        cell.textContent = text;
+        row.append(cell);
+      }
+      list.append(row);
+    });
+    board.append(list);
+  }
+  ui.startBest.textContent = game.best ? `Your best ${game.best.toFixed(2)}` : '';
+}
+
+function refreshStartBoard() {
+  renderStartBoard('Loading...');
+  return getLeaderboard().then((result) => {
+    if (!result) {
+      renderStartBoard('Leaderboard offline. Your best still counts.');
+      return;
+    }
+    leaderboardEntries = result.top || [];
+    bestGhost = result.ghost || null;
+    ui.ghostStatus.textContent = bestGhost
+      ? `Ghost: ${bestGhost.name} ${Number(bestGhost.time).toFixed(2)} s`
+      : '';
+    renderStartBoard();
+  });
 }
 
 function renderLeaderboard(container, entries, playerRank = null) {
@@ -380,7 +503,7 @@ async function submitRun() {
     game.runSubmitted = true;
     ui.submitButton.textContent = 'Submitted';
     leaderboardEntries = result.top || [];
-    renderLeaderboard(ui.startLeaderboard, leaderboardEntries.slice(0, 3));
+    renderStartBoard();
     startWave(result, run);
   } catch {
     if (runId === game.runId) {
@@ -432,7 +555,14 @@ function simulate(input) {
       game.trauma + Math.max(0, Math.min(1, (b.landingImpact - 4) / 7)),
     );
   }
-  if (b.airborne) game.airTime += DT;
+  if (b.airborne) {
+    game.airTime += DT;
+    game.airPeak = Math.max(
+      game.airPeak,
+      b.y - terrain.heightAt(b.x, b.z),
+    );
+    game.maxHeight = Math.max(game.maxHeight, game.airPeak);
+  }
   game.maxAir = Math.max(game.maxAir, game.airTime);
   if (!wasAir && b.airborne) {
     const kicker = terrain.kickers.find((item) => Math.abs(item.z - b.z) < 8);
@@ -440,11 +570,23 @@ function simulate(input) {
   }
   if (wasAir && !b.airborne && !b.crashed) {
     audio.event('land');
-    const bonus = airTimeBonus(game.airTime);
-    game.bonus += bonus;
-    if (bonus > 0) flash(`Big air -${bonus.toFixed(1)}s`, 1200);
+    const air = airTimeBonus(game.airTime);
+    const height = heightBonus(game.airPeak);
+    const bonus = Math.round((air + height) * 10) / 10;
+    game.bonus = Math.round((game.bonus + bonus) * 10) / 10;
+    if (height > 0) {
+      flash(
+        `Huge air ${Math.round(game.airPeak)} m  -${bonus.toFixed(1)}s`,
+        1500,
+      );
+    } else if (air > 0) {
+      flash(`Big air -${bonus.toFixed(1)}s`, 1200);
+    }
   }
-  if (!b.airborne) game.airTime = 0;
+  if (!b.airborne) {
+    game.airTime = 0;
+    game.airPeak = 0;
+  }
   game.maxSpeed = Math.max(game.maxSpeed, b.v);
   const s = -b.z;
   const next = terrain.checkpoints[game.checkpoint + 1];
@@ -473,7 +615,7 @@ function simulate(input) {
     const isBest = !game.best || total < game.best;
     if (isBest) {
       game.best = total;
-      localStorage.setItem('downhill-best', String(total));
+      localStorage.setItem('downhill-best-900', String(total));
     }
     audio.event('finish');
     if (isBest) audio.event('best');
@@ -484,7 +626,6 @@ function simulate(input) {
     );
     ui.finishForm.hidden = false;
     ui.finishLeaderboard.hidden = true;
-    ui.startLeaderboard.hidden = true;
     ui.nameInput.value = localStorage.getItem('downhill-name') || 'Rider';
     ui.finishLeaderboard.replaceChildren();
     getCommentary({ ...makeRunStats(ui.nameInput.value.trim() || 'Rider'), rank: null }).then(showCommentary);
@@ -573,6 +714,56 @@ function endWave() {
   camera.lookAt(cam.look);
   camera.updateProjectionMatrix();
   ui.overlay.classList.remove('hidden');
+}
+
+function showMenu() {
+  if (game.waveMode) endWave();
+  const p = startPose();
+  game.mode = 'ready';
+  placeBike(p.x, p.z, p.heading, 0);
+  game.time = 0;
+  game.penalty = 0;
+  game.bonus = 0;
+  game.checkpoint = -1;
+  game.crashTimer = 0;
+  game.maxSpeed = 0;
+  game.airTime = 0;
+  game.airPeak = 0;
+  game.maxAir = 0;
+  game.maxHeight = 0;
+  game.crashes = 0;
+  game.otterHits = 0;
+  game.timeScale = 1;
+  game.trauma = 0;
+  game.crashedSinceCheckpoint = false;
+  game.runId += 1;
+  game.runSubmitted = false;
+  game.runSubmitting = false;
+  game.leaderboardWarmed = false;
+  slowMoRealTime = 0;
+  slowMoLocked = false;
+  ghostRecorder.reset();
+  model.resetCrash();
+  updateMovingObstacles(obstacles, 0);
+  world.update(0);
+  ui.finishForm.hidden = true;
+  ui.nameInput.disabled = false;
+  ui.submitButton.disabled = false;
+  ui.submitButton.textContent = 'Submit';
+  ui.finishLeaderboard.hidden = true;
+  ui.finishLeaderboard.replaceChildren();
+  ui.wavePanel.hidden = true;
+  ui.hud.classList.remove('wave-mode');
+  ui.touch.hidden = true;
+  ui.title.textContent = 'Downhill';
+  ui.body.textContent = '';
+  ui.button.textContent = 'Press start';
+  ui.overlay.classList.add('start');
+  ui.overlay.classList.remove('hidden');
+  ui.flash.classList.remove('show');
+  ui.subtitle.classList.remove('show');
+  snapCamera();
+  void refreshStartBoard();
 }
 
 function interpolate(alpha) {
@@ -873,16 +1064,7 @@ loadModels(modelNames).then((models) => {
     game.assetStatus = { state: 'error', error: String(error), loadErrors: { ...window.__assetLoadErrors } };
   }
 });
-getLeaderboard().then((result) => {
-  if (!result) return;
-  leaderboardEntries = result.top || [];
-  bestGhost = result.ghost || null;
-  ui.ghostStatus.textContent = bestGhost
-    ? `Ghost: ${bestGhost.name} ${Number(bestGhost.time).toFixed(2)} s`
-    : '';
-  renderLeaderboard(ui.startLeaderboard, leaderboardEntries.slice(0, 3));
-  ui.startLeaderboard.hidden = leaderboardEntries.length === 0;
-});
+void refreshStartBoard();
 if (debug) {
   window.__game = game;
   window.__terrain = terrain;
