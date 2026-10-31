@@ -76,6 +76,7 @@ const ui = {
   body: document.getElementById('overlay-body'),
   button: document.getElementById('overlay-button'),
   startLeaderboard: document.getElementById('start-leaderboard'),
+  startBest: document.getElementById('start-best'),
   finishForm: document.getElementById('finish-controls'),
   nameInput: document.getElementById('rider-name'),
   submitButton: document.querySelector('#finish-controls button[type="submit"]'),
@@ -225,7 +226,7 @@ const game = {
   leaderboardWarmed: false,
   waveMode: false,
   trauma: 0,
-  best: Number(localStorage.getItem('downhill-best')) || null,
+  best: Number(localStorage.getItem('downhill-best-900')) || null,
 };
 let slowMoRealTime = 0;
 let slowMoLocked = false;
@@ -280,7 +281,6 @@ function start() {
   ui.wavePanel.hidden = true;
   ui.hud.classList.remove('wave-mode');
   ui.touch.hidden = false;
-  ui.startLeaderboard.hidden = leaderboardEntries.length === 0;
   ui.overlay.classList.add('hidden');
   snapCamera();
 }
@@ -318,10 +318,42 @@ const CRASH_TEXT = {
 };
 
 function showOverlay(title, body, button) {
+  ui.overlay.classList.remove('start');
   ui.title.textContent = title;
   ui.body.textContent = body;
   ui.button.textContent = button;
   ui.overlay.classList.remove('hidden');
+}
+
+function renderStartBoard(empty = 'No times yet. Set the first one.') {
+  const board = ui.startLeaderboard;
+  board.replaceChildren();
+  if (!leaderboardEntries.length) {
+    const note = document.createElement('p');
+    note.className = 'menu-empty';
+    note.textContent = empty;
+    board.append(note);
+  } else {
+    const list = document.createElement('ol');
+    list.className = 'arcade-scores';
+    const places = ['1ST', '2ND', '3RD', '4TH', '5TH'];
+    leaderboardEntries.slice(0, 5).forEach((entry, index) => {
+      const row = document.createElement('li');
+      for (const [cls, text] of [
+        ['place', places[index]],
+        ['name', entry.name],
+        ['time', Number(entry.time).toFixed(2)],
+      ]) {
+        const cell = document.createElement('span');
+        cell.className = cls;
+        cell.textContent = text;
+        row.append(cell);
+      }
+      list.append(row);
+    });
+    board.append(list);
+  }
+  ui.startBest.textContent = game.best ? `Your best ${game.best.toFixed(2)}` : '';
 }
 
 function renderLeaderboard(container, entries, playerRank = null) {
@@ -416,7 +448,7 @@ async function submitRun() {
     game.runSubmitted = true;
     ui.submitButton.textContent = 'Submitted';
     leaderboardEntries = result.top || [];
-    renderLeaderboard(ui.startLeaderboard, leaderboardEntries.slice(0, 3));
+    renderStartBoard();
     startWave(result, run);
   } catch {
     if (runId === game.runId) {
@@ -509,7 +541,7 @@ function simulate(input) {
     const isBest = !game.best || total < game.best;
     if (isBest) {
       game.best = total;
-      localStorage.setItem('downhill-best', String(total));
+      localStorage.setItem('downhill-best-900', String(total));
     }
     audio.event('finish');
     if (isBest) audio.event('best');
@@ -520,7 +552,6 @@ function simulate(input) {
     );
     ui.finishForm.hidden = false;
     ui.finishLeaderboard.hidden = true;
-    ui.startLeaderboard.hidden = true;
     ui.nameInput.value = localStorage.getItem('downhill-name') || 'Rider';
     ui.finishLeaderboard.replaceChildren();
     getCommentary({ ...makeRunStats(ui.nameInput.value.trim() || 'Rider'), rank: null }).then(showCommentary);
@@ -909,15 +940,18 @@ loadModels(modelNames).then((models) => {
     game.assetStatus = { state: 'error', error: String(error), loadErrors: { ...window.__assetLoadErrors } };
   }
 });
+renderStartBoard('Loading...');
 getLeaderboard().then((result) => {
-  if (!result) return;
+  if (!result) {
+    renderStartBoard('Leaderboard offline. Your best still counts.');
+    return;
+  }
   leaderboardEntries = result.top || [];
   bestGhost = result.ghost || null;
   ui.ghostStatus.textContent = bestGhost
     ? `Ghost: ${bestGhost.name} ${Number(bestGhost.time).toFixed(2)} s`
     : '';
-  renderLeaderboard(ui.startLeaderboard, leaderboardEntries.slice(0, 3));
-  ui.startLeaderboard.hidden = leaderboardEntries.length === 0;
+  renderStartBoard();
 });
 if (debug) {
   window.__game = game;

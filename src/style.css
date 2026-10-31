@@ -60,3 +60,51 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #000; font-f
 #audio-controls button { font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,.4); background: rgba(0,0,0,.25); color: #fff; cursor: pointer; }
 #volume-label { position: absolute; right: 16px; top: 92px; display: flex; align-items: center; gap: 8px; pointer-events: auto; font-size: 12px; text-shadow: 0 1px 4px rgba(0,0,0,.6); }
 #volume { width: 104px; accent-color: #ffb547; cursor: pointer; }
+@font-face { font-family: 'Bungee'; src: url('./fonts/bungee.woff2') format('woff2'); font-display: swap; }
+@font-face { font-family: 'Press Start 2P'; src: url('./fonts/press-start-2p.woff2') format('woff2'); font-display: swap; }
+#start-menu, .arcade-credit { display: none; }
+#overlay.start { overflow: hidden; background: radial-gradient(ellipse at 50% 30%, rgba(60,10,90,.25), rgba(8,0,24,.78) 75%); }
+#overlay.start::before { content: ''; position: absolute; left: 50%; top: 24%; width: 260vmax; height: 260vmax; margin: -130vmax 0 0 -130vmax; background: repeating-conic-gradient(from 0deg, rgba(255,60,200,.13) 0 6deg, rgba(255,200,40,.05) 6deg 12deg); animation: arcade-spin 40s linear infinite; pointer-events: none; }
+#overlay.start::after { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(0deg, rgba(0,0,0,.22) 0 1px, transparent 1px 3px); pointer-events: none; }
+#overlay.start #start-menu, #overlay.start .arcade-credit { display: block; }
+#overlay.start #overlay-title, #overlay.start #overlay-body { display: none; }
+#overlay.start .panel { touch-action: pan-y; position: relative; z-index: 1; width: min(800px, 96vw); padding: 34px 24px 14px; background: none; overflow: visible; }
+body:has(#overlay.start) .hud-top, body:has(#overlay.start) #touch, body:has(#overlay.start) #volume-label { visibility: hidden; }
+.arcade-presents { margin: 0 0 2px !important; font: 10px/1.6 'Press Start 2P', monospace; letter-spacing: .12em; text-transform: uppercase; color: #22e8ff; text-shadow: 0 0 8px #22e8ff; opacity: 1 !important; }
+.arcade-logo { position: relative; display: inline-block; animation: arcade-bob 3.2s ease-in-out infinite; }
+.arcade-logo::before { content: 'DOWNHILL'; position: absolute; left: 0; top: 0; z-index: 0; font: clamp(34px, 10vw, 104px)/1 'Bungee', Impact, sans-serif; letter-spacing: .02em; transform: skewX(-8deg); color: #1a0638; -webkit-text-stroke: 3px #1a0638; text-shadow: 2px 2px 0 #5b1cff, 4px 4px 0 #5b1cff, 6px 6px 0 #4314c4, 8px 8px 0 #2d0c8c, 10px 10px 0 #1a0638, 12px 14px 18px rgba(0,0,0,.6); }
+.arcade-title { position: relative; z-index: 1; margin: 0 !important; font: clamp(34px, 10vw, 104px)/1 'Bungee', Impact, sans-serif !important; letter-spacing: .02em !important; transform: skewX(-8deg); background: linear-gradient(180deg, #fffbe0 0%, #ffe14a 26%, #ff9a1f 50%, #ff2bd6 51%, #ff5ae0 74%, #ffd0f6 100%); -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-stroke: 2px #1a0638; filter: drop-shadow(0 0 16px rgba(255,43,214,.5)); }
+.arcade-title::after { content: 'DOWNHILL'; position: absolute; inset: 0; background: linear-gradient(105deg, transparent 42%, rgba(255,255,255,.95) 50%, transparent 58%); background-size: 300% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: arcade-shine 3.5s ease-in-out infinite; pointer-events: none; }
+.arcade-burst { position: absolute; z-index: 2; right: -17%; top: -40%; width: clamp(78px, 15vw, 118px); aspect-ratio: 1; display: grid; place-items: center; background: #ffe14a; clip-path: polygon(50% 0, 61% 18%, 80% 7%, 79% 28%, 100% 30%, 87% 47%, 100% 64%, 79% 69%, 82% 91%, 61% 82%, 50% 100%, 39% 82%, 18% 91%, 21% 69%, 0 64%, 13% 47%, 0 30%, 21% 28%, 20% 7%, 39% 18%); animation: arcade-pulse 1.1s ease-in-out infinite; }
+.arcade-burst span { font: clamp(7px, 1.4vw, 10px)/1.5 'Press Start 2P', monospace; color: #c0108f; text-align: center; transform: rotate(-12deg); }
+.arcade-ribbon { display: inline-block; margin: 10px 0 18px !important; padding: 7px 18px; font: clamp(9px, 1.8vw, 13px)/1.4 'Press Start 2P', monospace; text-transform: uppercase; letter-spacing: .08em; color: #fff; background: linear-gradient(90deg, #5b1cff, #ff2bd6); transform: skewX(-12deg); box-shadow: 4px 4px 0 #1a0638; opacity: 1 !important; }
+.menu-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 18px; text-align: left; }
+.menu-card { padding: 14px 16px; border: 3px solid #22e8ff; border-radius: 4px; background: rgba(10,2,30,.82); box-shadow: 0 0 0 3px #1a0638, 0 0 18px rgba(34,232,255,.45), inset 0 0 22px rgba(34,232,255,.12); }
+.menu-card:last-child { border-color: #ff2bd6; box-shadow: 0 0 0 3px #1a0638, 0 0 18px rgba(255,43,214,.45), inset 0 0 22px rgba(255,43,214,.12); }
+.menu-card h2 { margin: 0 0 12px; font: 12px/1.4 'Press Start 2P', monospace; text-transform: uppercase; text-align: center; color: #ffe14a; text-shadow: 2px 2px 0 #c0108f; }
+.arcade-scores { list-style: none; margin: 0; padding: 0; display: grid; gap: 9px; font: 11px/1.4 'Press Start 2P', monospace; }
+.arcade-scores li { display: flex; gap: 10px; align-items: baseline; color: #e9f9ff; }
+.arcade-scores li:first-child { color: #ffe14a; text-shadow: 0 0 8px rgba(255,225,74,.7); }
+.arcade-scores .place { width: 4ch; color: #22e8ff; }
+.arcade-scores li:first-child .place { color: inherit; }
+.arcade-scores .name { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.arcade-scores .time { font-variant-numeric: tabular-nums; }
+.menu-empty { margin: 4px 0 !important; font: 10px/1.8 'Press Start 2P', monospace; color: #e9f9ff; opacity: 1 !important; }
+.menu-best { margin: 12px 0 0 !important; padding-top: 10px; border-top: 2px dashed rgba(34,232,255,.4); font: 10px/1.4 'Press Start 2P', monospace; color: #22e8ff; text-align: center; opacity: 1 !important; }
+.menu-best:empty { display: none; }
+.menu-goal { margin: 0 0 12px !important; font-size: 14px; line-height: 1.5 !important; color: #f3e9ff; opacity: 1 !important; }
+.menu-keys { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 13px; }
+.menu-keys li { display: flex; align-items: center; gap: 10px; }
+.menu-keys span { display: inline-flex; gap: 4px; min-width: 78px; }
+kbd { display: inline-block; min-width: 24px; padding: 3px 6px 2px; border: 2px solid #ff2bd6; border-bottom-width: 4px; border-radius: 4px; background: #1a0638; font: 9px/1.4 'Press Start 2P', monospace; color: #fff; text-align: center; }
+#overlay.start #overlay-button { font: 16px/1 'Press Start 2P', monospace; padding: 16px 28px; text-transform: uppercase; color: #1a0638; background: linear-gradient(180deg, #fff7a8, #ffe14a 45%, #ff9a1f); border: 3px solid #1a0638; border-radius: 4px; box-shadow: 5px 5px 0 #ff2bd6, 0 0 24px rgba(255,225,74,.6); animation: arcade-blink 1s steps(2, start) infinite; }
+#overlay.start #overlay-button:hover, #overlay.start #overlay-button:focus-visible { animation: none; transform: translate(-2px, -2px); box-shadow: 7px 7px 0 #ff2bd6, 0 0 30px rgba(255,225,74,.8); }
+.arcade-credit { margin: 16px 0 0 !important; font: 8px/1.6 'Press Start 2P', monospace; letter-spacing: .1em; text-transform: uppercase; color: #b9a6ff; opacity: .9 !important; }
+@keyframes arcade-spin { to { transform: rotate(360deg); } }
+@keyframes arcade-bob { 50% { transform: translateY(-6px); } }
+@keyframes arcade-shine { 0%, 30% { background-position: 150% 0; } 70%, 100% { background-position: -50% 0; } }
+@keyframes arcade-pulse { 50% { transform: scale(1.1) rotate(6deg); } }
+@keyframes arcade-blink { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { #overlay.start::before, .arcade-logo, .arcade-title::after, .arcade-burst, #overlay.start #overlay-button { animation: none; } }
+@media (max-width: 600px) { .menu-grid { grid-template-columns: 1fr; } .arcade-burst { width: 54px; right: -14%; top: -95%; } .menu-keys { display: none; } .menu-goal { margin: 0 !important; } #overlay.start { align-items: flex-start; padding-top: 84px; } #overlay.start .panel { padding-top: 10px; max-height: calc(100vh - 84px); overflow-y: auto; } }
+@media (max-height: 640px) and (min-width: 601px) { .arcade-title, .arcade-logo::before { font-size: 72px !important; } .arcade-burst { width: 84px; right: -21%; top: -34%; } .arcade-ribbon { margin: 6px 0 10px !important; } .menu-card { padding: 10px 12px; } }

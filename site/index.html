@@ -6,113 +6,82 @@
 <title>Downhill | Built with Devin</title>
 <meta name="description" content="A downhill mountain bike game built with Devin.">
 <style>
-  :root { color-scheme: dark; }
+  @font-face { font-family: 'Bungee'; src: url(bungee.woff2) format('woff2'); font-display: swap; }
+  @font-face { font-family: 'Press Start 2P'; src: url(press-start-2p.woff2) format('woff2'); font-display: swap; }
+  :root { color-scheme: dark; --pink: #ff2bd6; --cyan: #22e8ff; --gold: #ffe14a; --ink: #1a0638; --pix: 'Press Start 2P', monospace; }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; }
   body {
-    font: 500 15px/1.4 Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
-    color: #e8eefc;
-    background: linear-gradient(180deg, #060a1c 0%, #141f52 22%, #3b4fa0 40%, #b0709e 54%, #f08f5c 66%, #f8c47c 76%);
-    overflow: hidden;
+    font: 500 15px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; color: #f3e9ff; overflow: hidden;
+    background: linear-gradient(180deg, #0b0221 0%, #2a0845 28%, #6b1470 46%, #d63a7a 60%, #ff8a3d 72%, #ffc35a 80%);
   }
   .sky { position: fixed; inset: 0; overflow: hidden; z-index: 0; pointer-events: none; }
-  .sun {
-    position: absolute; left: 50%; bottom: 40vh; width: 46vmin; height: 46vmin; margin-left: -23vmin;
-    border-radius: 50%;
-    background: radial-gradient(circle, rgba(255, 214, 150, .9) 0%, rgba(255, 170, 100, .35) 40%, rgba(255, 150, 90, 0) 70%);
-    animation: pulse 9s ease-in-out infinite;
-  }
-  .stars, .stars::after {
-    position: absolute; inset: -50% 0 0 0; height: 150%;
-    background-image:
-      radial-gradient(1.2px 1.2px at 12% 18%, #fff 50%, transparent 51%),
-      radial-gradient(1px 1px at 33% 8%, #cfe0ff 50%, transparent 51%),
-      radial-gradient(1.4px 1.4px at 58% 22%, #fff 50%, transparent 51%),
-      radial-gradient(1px 1px at 74% 12%, #fff 50%, transparent 51%),
-      radial-gradient(1.2px 1.2px at 90% 30%, #cfe0ff 50%, transparent 51%),
-      radial-gradient(1px 1px at 22% 36%, #fff 50%, transparent 51%),
-      radial-gradient(1px 1px at 46% 40%, #fff 50%, transparent 51%),
-      radial-gradient(1.3px 1.3px at 82% 44%, #fff 50%, transparent 51%);
-    background-size: 420px 300px;
-    opacity: .7;
-    animation: twinkle 6s ease-in-out infinite alternate;
-  }
-  .stars::after { content: ""; inset: 0; height: 100%; background-size: 260px 220px; animation-delay: -3s; opacity: .5; }
-  .ridge {
-    position: absolute; left: 0; bottom: 0; width: 200%;
-    background-repeat: repeat-x; background-size: 50% 100%;
-    will-change: transform;
-    animation: ride linear infinite;
-  }
-  .r1 { height: 58vh; background-image: url(ridge-1.svg); animation-duration: 160s; opacity: .85; }
-  .r2 { height: 46vh; background-image: url(ridge-2.svg); animation-duration: 95s; }
-  .r3 { height: 34vh; background-image: url(ridge-3.svg); animation-duration: 55s; }
-  .r4 { height: 22vh; background-image: url(ridge-4.svg); animation-duration: 30s; }
-  .haze {
-    position: absolute; left: 0; right: 0; bottom: 28vh; height: 24vh;
-    background: linear-gradient(180deg, rgba(240, 163, 94, 0), rgba(240, 163, 94, .18), rgba(240, 163, 94, 0));
-  }
-  .snow {
-    position: absolute; inset: -100% 0 0 0; height: 200%;
-    background-image:
-      radial-gradient(2px 2px at 10% 20%, rgba(255,255,255,.8) 50%, transparent 51%),
-      radial-gradient(1.5px 1.5px at 40% 60%, rgba(255,255,255,.6) 50%, transparent 51%),
-      radial-gradient(2.5px 2.5px at 70% 30%, rgba(255,255,255,.7) 50%, transparent 51%),
-      radial-gradient(1.5px 1.5px at 85% 80%, rgba(255,255,255,.5) 50%, transparent 51%);
-    background-size: 300px 300px;
-    will-change: transform;
-    animation: fall 18s linear infinite;
-  }
+  .stars { position: absolute; inset: 0 0 40% 0;
+    background-image: radial-gradient(1.4px 1.4px at 12% 18%, #fff 50%, transparent 51%), radial-gradient(1px 1px at 33% 8%, #ffd0f6 50%, transparent 51%), radial-gradient(1.6px 1.6px at 58% 22%, #fff 50%, transparent 51%), radial-gradient(1px 1px at 74% 12%, #fff 50%, transparent 51%), radial-gradient(1.2px 1.2px at 90% 30%, #a8f4ff 50%, transparent 51%), radial-gradient(1px 1px at 22% 36%, #fff 50%, transparent 51%);
+    background-size: 420px 300px; animation: twinkle 4s ease-in-out infinite alternate; }
+  .sun { position: absolute; left: 50%; bottom: 30vh; width: 52vmin; height: 52vmin; margin-left: -26vmin; border-radius: 50%;
+    background: linear-gradient(180deg, #fff3a0 0%, #ffd23f 35%, #ff7a3d 65%, #ff2bd6 100%);
+    -webkit-mask: linear-gradient(180deg, #000 0 50%, transparent 50% 54%, #000 54% 62%, transparent 62% 67%, #000 67% 74%, transparent 74% 80%, #000 80% 86%, transparent 86% 93%, #000 93%);
+            mask: linear-gradient(180deg, #000 0 50%, transparent 50% 54%, #000 54% 62%, transparent 62% 67%, #000 67% 74%, transparent 74% 80%, #000 80% 86%, transparent 86% 93%, #000 93%);
+    filter: drop-shadow(0 0 40px rgba(255,90,160,.7)); animation: pulse 6s ease-in-out infinite; }
+  .ridge { position: absolute; left: 0; bottom: 0; width: 200%; background-repeat: repeat-x; background-size: 50% 100%; will-change: transform; animation: ride linear infinite; }
+  .r1 { height: 52vh; background-image: url(ridge-1.svg); animation-duration: 160s; opacity: .9; }
+  .r2 { height: 42vh; background-image: url(ridge-2.svg); animation-duration: 95s; }
+  .r3 { height: 30vh; background-image: url(ridge-3.svg); animation-duration: 55s; }
+  .r4 { height: 20vh; background-image: url(ridge-4.svg); animation-duration: 30s; }
+  .grid { position: absolute; left: -50%; right: -50%; bottom: 0; height: 18vh; transform: perspective(300px) rotateX(60deg); transform-origin: bottom;
+    background-image: linear-gradient(rgba(34,232,255,.55) 2px, transparent 2px), linear-gradient(90deg, rgba(34,232,255,.55) 2px, transparent 2px);
+    background-size: 60px 30px; animation: grid 1.2s linear infinite; -webkit-mask: linear-gradient(transparent, #000 60%); mask: linear-gradient(transparent, #000 60%); }
+  .scan { position: fixed; inset: 0; z-index: 3; pointer-events: none; background: repeating-linear-gradient(0deg, rgba(0,0,0,.18) 0 1px, transparent 1px 3px); }
   @keyframes ride { to { transform: translateX(-50%); } }
-  @keyframes fall { to { transform: translate(-300px, 50%); } }
-  @keyframes twinkle { to { opacity: .35; } }
-  @keyframes pulse { 50% { transform: scale(1.06); opacity: .85; } }
-  @media (prefers-reduced-motion: reduce) { .sky *, .sky *::after { animation: none !important; } }
-
-  main {
-    position: relative; z-index: 1; height: 100%;
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    gap: 14px; padding: 16px;
-  }
-  .bar {
-    width: min(1180px, 86vw, calc((100vh - 200px) * 16 / 9));
-    display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  }
-  h1 { margin: 0; font-size: 20px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
-  .frame {
-    width: min(1180px, 86vw, calc((100vh - 200px) * 16 / 9));
-    aspect-ratio: 16 / 9;
-    border-radius: 14px; overflow: hidden;
-    background: #000;
-    border: 1px solid rgba(255, 255, 255, .18);
-    box-shadow: 0 30px 80px rgba(0, 0, 0, .55), 0 0 0 6px rgba(255, 255, 255, .04);
-  }
-  .frame iframe { display: block; width: 100%; height: 100%; border: 0; }
-  button {
-    font: inherit; font-size: 13px; color: inherit; cursor: pointer;
-    padding: 7px 12px; border-radius: 8px;
-    background: rgba(255, 255, 255, .08); border: 1px solid rgba(255, 255, 255, .2);
-  }
-  button:hover { background: rgba(255, 255, 255, .16); }
-  .badge {
-    display: inline-flex; align-items: center; gap: 10px;
-    padding: 8px 18px 8px 8px; border-radius: 999px;
-    color: #fff; text-decoration: none;
-    background: rgba(7, 11, 29, .7); border: 1px solid rgba(255, 255, 255, .2);
-    backdrop-filter: blur(8px);
-    transition: transform .2s, border-color .2s;
-  }
-  .badge:hover { transform: translateY(-2px); border-color: rgba(255, 255, 255, .5); }
-  .badge img.otter { width: 48px; height: 48px; object-fit: contain; animation: bob 3s ease-in-out infinite; }
-  .badge span { font-size: 15px; opacity: .85; }
-  .badge img.logo { height: 22px; }
+  @keyframes grid { to { background-position: 0 30px; } }
+  @keyframes twinkle { to { opacity: .4; } }
+  @keyframes pulse { 50% { transform: scale(1.04); } }
+  @keyframes chase { to { background-position: 18px 0, 0 0; } }
+  @keyframes blink { 50% { opacity: .2; } }
+  @keyframes shine { 0%, 35% { background-position: 150% 0; } 75%, 100% { background-position: -50% 0; } }
   @keyframes bob { 50% { transform: translateY(-3px) rotate(-4deg); } }
-  @media (max-width: 700px) {
-    main { justify-content: flex-start; padding: 10px; gap: 10px; }
-    .bar, .frame { width: 100%; }
-    .frame { aspect-ratio: auto; flex: 1; }
-    h1 { font-size: 16px; }
-    #fs { display: none; }
+
+  main { position: relative; z-index: 1; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 12px; }
+  .cabinet { --w: min(1120px, 88vw, calc((100vh - 220px) * 16 / 9)); width: calc(var(--w) + 56px); border-radius: 18px 18px 10px 10px; padding: 0 18px 0;
+    background: linear-gradient(180deg, #2b0c4e, #12042a); border: 3px solid #000;
+    box-shadow: 0 0 0 3px var(--pink), 0 0 40px rgba(255,43,214,.45), 0 40px 90px rgba(0,0,0,.6); }
+  .marquee { position: relative; margin: 0 -18px; height: 92px; display: flex; align-items: center; justify-content: center; gap: 22px; border-radius: 15px 15px 0 0; overflow: hidden;
+    background: radial-gradient(ellipse at 50% 120%, rgba(255,43,214,.55), transparent 60%), linear-gradient(180deg, #3a0f6b, #1a0638); border-bottom: 3px solid #000; }
+  .marquee::before, .marquee::after { content: ''; position: absolute; left: 0; right: 0; height: 6px;
+    background: radial-gradient(circle, var(--gold) 0 2px, transparent 2.5px) 0 0 / 18px 6px repeat-x, radial-gradient(circle, rgba(255,225,74,.25) 0 3px, transparent 3.5px) 0 0 / 9px 6px repeat-x; animation: chase .6s steps(2) infinite; }
+  .marquee::before { top: 4px; } .marquee::after { bottom: 4px; animation-direction: reverse; }
+  .presents { font: 9px/1.6 var(--pix); letter-spacing: .14em; color: var(--cyan); text-shadow: 0 0 8px var(--cyan); text-transform: uppercase; writing-mode: horizontal-tb; }
+  .logo { position: relative; margin: 0; font: 54px/1 'Bungee', Impact, sans-serif; letter-spacing: .02em; transform: skewX(-8deg); }
+  .logo .fill, .logo::before, .logo::after { display: block; }
+  .logo::before { content: 'DOWNHILL'; position: absolute; inset: 0; color: var(--ink); -webkit-text-stroke: 3px var(--ink); text-shadow: 2px 2px 0 #5b1cff, 4px 4px 0 #5b1cff, 6px 6px 0 #2d0c8c, 8px 9px 12px rgba(0,0,0,.6); }
+  .logo .fill { position: relative; background: linear-gradient(180deg, #fffbe0 0%, #ffe14a 26%, #ff9a1f 50%, var(--pink) 51%, #ff5ae0 74%, #ffd0f6 100%); -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-stroke: 1.5px var(--ink); filter: drop-shadow(0 0 12px rgba(255,43,214,.5)); }
+  .logo::after { content: 'DOWNHILL'; position: absolute; inset: 0; background: linear-gradient(105deg, transparent 42%, rgba(255,255,255,.95) 50%, transparent 58%) 0 0 / 300% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: shine 4s ease-in-out infinite; }
+  .tag { font: 9px/1.6 var(--pix); letter-spacing: .1em; text-transform: uppercase; color: #fff; padding: 6px 10px; background: linear-gradient(90deg, #5b1cff, var(--pink)); transform: skewX(-12deg); box-shadow: 3px 3px 0 #000; }
+  .bezel { margin: 14px 0; padding: 10px; border-radius: 14px; background: linear-gradient(145deg, #0a0a12, #26213a); box-shadow: inset 0 0 0 2px #000, inset 0 4px 12px rgba(255,255,255,.08); }
+  .frame { width: var(--w); aspect-ratio: 16 / 9; border-radius: 8px; overflow: hidden; background: #000; box-shadow: 0 0 0 2px #000, 0 0 24px rgba(34,232,255,.35); }
+  .frame iframe { display: block; width: 100%; height: 100%; border: 0; }
+  .panel { margin: 0 -18px; padding: 12px 22px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-top: 3px solid #000; border-radius: 0 0 8px 8px;
+    background: linear-gradient(180deg, #3a0f6b, #1a0638); }
+  .coin { font: 10px/1.6 var(--pix); color: var(--gold); text-transform: uppercase; letter-spacing: .08em; animation: blink 1.2s steps(2, start) infinite; }
+  .badge { display: inline-flex; align-items: center; gap: 10px; padding: 6px 16px 6px 6px; border-radius: 999px; color: #fff; text-decoration: none;
+    background: #0b0221; border: 2px solid var(--cyan); box-shadow: 0 0 14px rgba(34,232,255,.4); transition: transform .2s, box-shadow .2s; }
+  .badge:hover { transform: translateY(-2px); box-shadow: 0 0 22px rgba(34,232,255,.7); }
+  .badge img.otter { width: 40px; height: 40px; object-fit: contain; animation: bob 3s ease-in-out infinite; }
+  .badge span { font: 9px/1.6 var(--pix); text-transform: uppercase; }
+  .badge img.logo-devin { height: 20px; }
+  .btn { display: inline-flex; align-items: center; gap: 10px; background: none; border: 0; padding: 0; cursor: pointer; color: #fff; font: 9px/1.6 var(--pix); text-transform: uppercase; }
+  .btn i { width: 34px; height: 34px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #ff9ae9, var(--pink) 55%, #9a0a7c); box-shadow: 0 4px 0 #5a0448, 0 0 14px rgba(255,43,214,.6); transition: transform .1s, box-shadow .1s; }
+  .btn:active i { transform: translateY(3px); box-shadow: 0 1px 0 #5a0448; }
+  .credit { margin-top: 12px; font: 8px/1.6 var(--pix); letter-spacing: .12em; text-transform: uppercase; color: #ffd0f6; text-shadow: 0 1px 0 #000; }
+  .credit a { color: inherit; }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; } }
+  @media (max-width: 760px) {
+    main { justify-content: flex-start; padding: 8px; }
+    .cabinet { --w: calc(100vw - 52px); width: 100%; flex: 1; display: flex; flex-direction: column; }
+    .marquee { height: 64px; gap: 10px; } .presents, .tag, .coin { display: none; } .logo { font-size: 36px; }
+    .bezel { flex: 1; display: flex; margin: 10px 0; padding: 6px; } .frame { flex: 1; aspect-ratio: auto; width: 100%; }
+    .panel { justify-content: center; } #fs { display: none; } .credit { display: none; }
   }
 </style>
 </head>
@@ -121,25 +90,35 @@
   <div class="stars"></div>
   <div class="sun"></div>
   <div class="ridge r1"></div>
-  <div class="haze"></div>
   <div class="ridge r2"></div>
   <div class="ridge r3"></div>
   <div class="ridge r4"></div>
-  <div class="snow"></div>
+  <div class="grid"></div>
 </div>
+<div class="scan" aria-hidden="true"></div>
 <main>
-  <div class="bar">
-    <h1>Downhill</h1>
-    <button id="fs" type="button">Fullscreen</button>
+  <div class="cabinet">
+    <header class="marquee">
+      <span class="presents">Aloomii<br>presents</span>
+      <h1 class="logo"><span class="fill">DOWNHILL</span></h1>
+      <span class="tag">Mountain bike mayhem</span>
+    </header>
+    <div class="bezel">
+      <div class="frame">
+        <iframe id="game" src="play/" title="Downhill game" allow="autoplay; fullscreen; gamepad" allowfullscreen></iframe>
+      </div>
+    </div>
+    <footer class="panel">
+      <span class="coin">Free play</span>
+      <a class="badge" href="https://devin.ai" target="_blank" rel="noopener">
+        <img class="otter" src="otter.png" alt="">
+        <span>Built with</span>
+        <img class="logo-devin" src="devin-logo.svg" alt="Devin">
+      </a>
+      <button id="fs" class="btn" type="button"><i></i>Fullscreen</button>
+    </footer>
   </div>
-  <div class="frame">
-    <iframe id="game" src="play/" title="Downhill game" allow="autoplay; fullscreen; gamepad" allowfullscreen></iframe>
-  </div>
-  <a class="badge" href="https://devin.ai" target="_blank" rel="noopener">
-    <img class="otter" src="otter.png" alt="">
-    <span>Built with</span>
-    <img class="logo" src="devin-logo.svg" alt="Devin">
-  </a>
+  <p class="credit">An <a href="https://aloomii.com" target="_top">Aloomii</a> game jam build</p>
 </main>
 <script>
   const game = document.getElementById('game');
