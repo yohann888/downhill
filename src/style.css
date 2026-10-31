@@ -88,6 +88,8 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #000; font-f
 #audio-controls button[hidden] { display: none; }
 #audio-controls .hud-label { display: inline; }
 #audio-controls .hud-icon { display: none; align-items: center; justify-content: center; }
+#audio-controls #pause-button .hud-icon,
+#audio-controls #photo-button .hud-icon { display: inline-flex; }
 #audio-controls .hud-icon svg { display: none; width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 #audio-controls #mute:not(.is-muted) .icon-sound-on,
 #audio-controls #mute.is-muted .icon-sound-off,

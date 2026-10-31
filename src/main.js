@@ -154,11 +154,11 @@ function syncHudButton(button, label) {
   button.title = label;
 }
 function syncPauseButton(paused = false) {
-  syncHudButton(ui.pause, paused ? 'Resume' : 'Pause');
+  syncHudButton(ui.pause, paused ? 'Resume (P)' : 'Pause (P)');
 }
 syncMuteButton();
 syncPauseButton();
-syncHudButton(ui.photo, 'Photo');
+syncHudButton(ui.photo, 'Photo (C)');
 const menuMusic = document.getElementById('menu-music');
 const youtubeControls = document.getElementById('youtube-music-controls');
 const youtubeLink = document.getElementById('youtube-link');
@@ -707,6 +707,7 @@ function start() {
   syncPauseButton(false);
   syncYouTubeUi();
   snapCamera();
+  schedulePhotoHint();
 }
 
 function respawn(manual) {
@@ -770,6 +771,17 @@ function flash(text, ms = 1200) {
   ui.flash.classList.add('show');
   clearTimeout(flashTimeout);
   flashTimeout = setTimeout(() => ui.flash.classList.remove('show'), ms);
+}
+
+let photoHintTimeout;
+function schedulePhotoHint() {
+  clearTimeout(photoHintTimeout);
+  if (localStorage.getItem('downhill.photo-hint')) return;
+  photoHintTimeout = setTimeout(() => {
+    if (game.mode !== 'riding' && game.mode !== 'paused') return;
+    localStorage.setItem('downhill.photo-hint', 'shown');
+    flash('Press C or tap the camera to snap a photo', 3000);
+  }, 4000);
 }
 
 let photoInProgress = false;
