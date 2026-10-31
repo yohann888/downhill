@@ -255,11 +255,7 @@ async function playYouTubeLink() {
   const link = youtubeLink.value.trim();
   const id = parseYouTubeId(link);
   if (!id) {
-    if (audio.music.id === 'youtube') {
-      fallbackFromYouTube('Saved YouTube link is missing or invalid.');
-    } else {
-      youtubeMessage.textContent = 'Enter a valid YouTube link.';
-    }
+    youtubeMessage.textContent = 'Enter a valid YouTube link.';
     return false;
   }
   localStorage.setItem('downhill.youtube-link', link);
