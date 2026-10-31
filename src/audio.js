@@ -179,6 +179,22 @@ export function createAudio() {
     });
   }
 
+  function playSqueak() {
+    if (!ctx || !master) return;
+    const oscillator = ctx.createOscillator();
+    const gain = ctx.createGain();
+    const start = ctx.currentTime;
+    oscillator.type = 'triangle';
+    oscillator.frequency.setValueAtTime(420, start);
+    oscillator.frequency.exponentialRampToValueAtTime(880, start + 0.12);
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(0.09, start + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.13);
+    oscillator.connect(gain).connect(master);
+    oscillator.start(start);
+    oscillator.stop(start + 0.14);
+  }
+
   function createRainNoise() {
     const buffer = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
     const channel = buffer.getChannelData(0);
@@ -313,6 +329,9 @@ export function createAudio() {
     playCommentary,
     chime(ahead) {
       playChime(Boolean(ahead));
+    },
+    squeak() {
+      playSqueak();
     },
     update(bike, input, riding, dt, timeScale = 1) {
       if (!ctx) return;

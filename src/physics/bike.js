@@ -64,6 +64,28 @@ function closestPointOnObstacle(obstacle, x, z) {
   };
 }
 
+function obstacleFootprintAt(obstacle, x, z) {
+  const closest = closestPointOnObstacle(obstacle, x, z);
+  const dx = x - closest.x;
+  const dz = z - closest.z;
+  const distance = Math.hypot(dx, dz);
+  const hasEllipse = Number.isFinite(obstacle.hx) && Number.isFinite(obstacle.hz);
+  const ex = hasEllipse ? obstacle.hx + BIKE_RADIUS : 0;
+  const ez = hasEllipse ? obstacle.hz + BIKE_RADIUS : 0;
+  const q = hasEllipse ? Math.hypot(dx / ex, dz / ez) : 0;
+  const contactDistance =
+    obstacle.type === 'tree' ? obstacle.r + 0.2 : BIKE_RADIUS + obstacle.r;
+  const intersects = hasEllipse ? q < 1 : distance < contactDistance;
+  const clearance = hasEllipse
+    ? q > 1 ? distance * (1 - 1 / q) : 0
+    : Math.max(0, distance - contactDistance);
+  return { closest, dx, dz, distance, hasEllipse, ex, ez, q, contactDistance, intersects, clearance };
+}
+
+export function obstacleClearance(obstacle, x, z) {
+  return obstacleFootprintAt(obstacle, x, z).clearance;
+}
+
 export function createBike({ x, z, heading = 0 }, terrain) {
   const y = terrain.heightAt(x, z);
 
@@ -365,16 +387,18 @@ export function stepBike(state, input, terrain, obstacles, dt) {
     for (const obstacle of obstacles) {
       if (Math.abs(obstacle.z - state.z) >= 6) continue;
 
-      const closest = closestPointOnObstacle(obstacle, state.x, state.z);
-      const dx = state.x - closest.x;
-      const dz = state.z - closest.z;
-      const distance = Math.hypot(dx, dz);
-      const hasEllipse = Number.isFinite(obstacle.hx) && Number.isFinite(obstacle.hz);
-      const ex = hasEllipse ? obstacle.hx + BIKE_RADIUS : 0;
-      const ez = hasEllipse ? obstacle.hz + BIKE_RADIUS : 0;
-      const q = hasEllipse ? Math.hypot(dx / ex, dz / ez) : 0;
-      const contactDistance =
-        obstacle.type === 'tree' ? obstacle.r + 0.2 : BIKE_RADIUS + obstacle.r;
+      const {
+        closest,
+        dx,
+        dz,
+        distance,
+        hasEllipse,
+        ex,
+        ez,
+        q,
+        contactDistance,
+        intersects,
+      } = obstacleFootprintAt(obstacle, state.x, state.z);
 
       if (obstacle.type === 'tree') {
         const foliageRadius = Math.min(1.6, obstacle.foliageRadius ?? 0);
@@ -387,7 +411,7 @@ export function stepBike(state, input, terrain, obstacles, dt) {
         }
       }
 
-      if (hasEllipse ? q >= 1 : distance >= contactDistance) continue;
+      if (!intersects) continue;
       if (state.y - terrain.heightAt(closest.x, closest.z) >= obstacle.h) continue;
 
       if (state.v > OBSTACLE_CRASH_SPEED) {

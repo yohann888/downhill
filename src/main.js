@@ -24,6 +24,7 @@ import { createRecorder, sampleGhost } from './ghost.js';
 import { getEditableKeyboardTarget } from './keyboard.js';
 import { savePhoto } from './photo.js';
 import { ghostTimeAtZ, loadBestSplits, saveBestSplits, splitDelta } from './splits.js';
+import { createDodgeTracker, updateDodgeTracker } from './dodge.js';
 import { APP_VERSION_LABEL } from './app-version.js';
 import {
   loadRiderPreference,
@@ -62,6 +63,7 @@ const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerH
 
 const terrain = createTerrain();
 const obstacles = createObstacles(terrain);
+let dodgeTracker = createDodgeTracker();
 const pickups = createPickups(terrain, obstacles);
 const world = buildWorld(scene, renderer, terrain, obstacles, pickups);
 const post = queryParams.has('nopost')
@@ -689,6 +691,7 @@ function start() {
   clearPowerUps();
   game.mode = 'riding';
   game.time = 0;
+  dodgeTracker = createDodgeTracker();
   game.bestSplits = loadBestSplits(localStorage, terrain.checkpoints.length);
   game.runSplits = [];
   game.splitTimer = 0;
@@ -743,6 +746,7 @@ function respawn(manual) {
   const doubleJumpTime = game.bike?.doubleJumpTime ?? 0;
   placeBike(p.x, p.z, p.heading, cp ? 5 : 0);
   game.bike.doubleJumpTime = doubleJumpTime;
+  updateDodgeTracker(dodgeTracker, { crashed: true }, obstacles, game.time);
   game.airDoubleJumped = false;
   model.resetCrash();
   game.airTime = 0;
@@ -1239,6 +1243,17 @@ function simulate(input) {
   if (b.foliageHit) dust.leafBurst(b.foliageHit);
   game.time += DT;
   game.splitTimer = Math.max(0, game.splitTimer - DT);
+  const dodgeEvents = updateDodgeTracker(dodgeTracker, b, obstacles, game.time);
+  for (const event of dodgeEvents) {
+    if (event.type === 'dodge') {
+      game.bonus += 0.3;
+      flash('Otter dodge -0.3s', 1200);
+      audio.squeak();
+    } else if (event.type === 'combo') {
+      game.bonus += 1;
+      flash('Otter whisperer -1s', 1500);
+    }
+  }
   if (!game.leaderboardWarmed && -b.z / terrain.courseLength >= 0.8) {
     game.leaderboardWarmed = true;
     void getLeaderboard();
