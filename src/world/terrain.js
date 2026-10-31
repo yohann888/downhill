@@ -1,4 +1,12 @@
-import { CRR_OFF, CRR_TRAIL, MU_OFF, MU_TRAIL } from '../physics/constants.js';
+import {
+  CRR_OFF,
+  CRR_TRAIL,
+  MU_OFF,
+  MU_TRAIL,
+  OUT_OF_BOUNDS,
+  SHOULDER,
+  SHOULDER_BLEND,
+} from '../physics/constants.js';
 import { createValueNoise } from './noise.js';
 
 const COURSE_LENGTH = 1200;
@@ -101,12 +109,14 @@ export function createTerrain(seed = 1) {
 
   const surfaceAt = (x, z) => {
     const d = Math.abs(x - centerX(z));
-    const onTrail = d <= halfWidth(z);
+    const hw = halfWidth(z);
+    const u = Math.max(0, d - hw);
+    const t = smoothstep(SHOULDER, SHOULDER + SHOULDER_BLEND, u);
     return {
-      crr: onTrail ? CRR_TRAIL : CRR_OFF,
-      mu: onTrail ? MU_TRAIL : MU_OFF,
+      crr: CRR_TRAIL + (CRR_OFF - CRR_TRAIL) * t,
+      mu: MU_TRAIL + (MU_OFF - MU_TRAIL) * t,
       outOfBounds:
-        d > halfWidth(z) + 9 || z < -COURSE_LENGTH - 30 || z > 20,
+        d > hw + OUT_OF_BOUNDS || z < -COURSE_LENGTH - 30 || z > 20,
     };
   };
 

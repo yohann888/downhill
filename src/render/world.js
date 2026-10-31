@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { Sky } from 'three/examples/jsm/objects/Sky.js';
+import { OUT_OF_BOUNDS } from '../physics/constants.js';
 import { createRandom, createValueNoise } from '../world/noise.js';
 import { crossProfile } from '../world/terrain.js';
 import { unitMesh } from './assets.js';
@@ -210,7 +211,7 @@ function buildTrees(terrain, obstacles) {
     for (const side of [-1, 1]) {
       if (random() > 0.85) continue;
       const hw = terrain.halfWidth(z);
-      const d = hw + 9 + Math.pow(random(), 1.6) * 95;
+      const d = hw + OUT_OF_BOUNDS + 1 + Math.pow(random(), 1.6) * 95;
       placements.push({
         x: terrain.centerX(z) + side * d,
         z: z + (random() - 0.5) * 1.5,
