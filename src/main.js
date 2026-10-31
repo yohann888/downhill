@@ -18,7 +18,7 @@ import {
   slowMoTarget,
 } from './feel.js';
 import { getCommentary, getLeaderboard, postRun } from './api.js';
-import { buildRankOverlayRows } from './leaderboard.js';
+import { buildRankOverlayRows, cleanText, rivalLine } from './leaderboard.js';
 import { createRecorder, sampleGhost } from './ghost.js';
 
 const CRASH_PENALTY = 3;
@@ -66,6 +66,9 @@ const ghostRecorder = createRecorder();
 let bestGhost = null;
 let ghostAssetsReady = false;
 let leaderboardEntries = [];
+let submittedRank = null;
+let leaderboardReturnFocus = null;
+let leaderboardRequestId = 0;
 let commentaryTimeout;
 const dust = createDust(scene, terrain);
 const audio = createAudio();
@@ -91,8 +94,16 @@ const ui = {
   nameInput: document.getElementById('rider-name'),
   submitButton: document.querySelector('#finish-controls button[type="submit"]'),
   finishLeaderboard: document.getElementById('finish-leaderboard'),
+  leaderboardTitle: document.getElementById('leaderboard-open-title'),
+  leaderboardFinish: document.getElementById('leaderboard-open-finish'),
+  leaderboardWave: document.getElementById('leaderboard-open-wave'),
+  leaderboardOverlay: document.getElementById('leaderboard-overlay'),
+  leaderboardClose: document.getElementById('leaderboard-close'),
+  fullLeaderboard: document.getElementById('full-leaderboard-list'),
   wavePanel: document.getElementById('wave-panel'),
   waveLeaderboard: document.getElementById('wave-leaderboard'),
+  waveRivalLine: document.getElementById('wave-rival-line'),
+  waveBadge: document.getElementById('brand-badge-wave'),
   rideAgain: document.getElementById('wave-ride-again'),
   waveMenu: document.getElementById('wave-menu'),
   hud: document.getElementById('hud'),
@@ -170,12 +181,27 @@ const KEYMAP = {
   KeyW: 'throttle', ArrowUp: 'throttle', KeyS: 'brake', ArrowDown: 'brake',
 };
 window.addEventListener('keydown', (e) => {
+  if (e.code === 'Escape' && !ui.leaderboardOverlay.hidden) {
+    e.preventDefault();
+    closeLeaderboard();
+    return;
+  }
   if (e.code === 'Escape' && (game.mode === 'finished' || game.waveMode)) {
     e.preventDefault();
     showMenu();
     return;
   }
   if (e.target === ui.nameInput) return;
+  if (e.code === 'KeyB' && !e.repeat) {
+    e.preventDefault();
+    if (ui.leaderboardOverlay.hidden) openLeaderboard();
+    else closeLeaderboard();
+    return;
+  }
+  if (!ui.leaderboardOverlay.hidden) {
+    if (e.code === 'Enter' || e.code === 'Space') e.preventDefault();
+    return;
+  }
   if (e.code === 'KeyN' && !e.repeat) {
     ui.music.click();
     e.preventDefault();
@@ -231,6 +257,13 @@ ui.finishForm.addEventListener('submit', (event) => {
 ui.rideAgain.addEventListener('click', () => start());
 ui.menuButton.addEventListener('click', () => showMenu());
 ui.waveMenu.addEventListener('click', () => showMenu());
+ui.leaderboardTitle.addEventListener('click', openLeaderboard);
+ui.leaderboardFinish.addEventListener('click', openLeaderboard);
+ui.leaderboardWave.addEventListener('click', openLeaderboard);
+ui.leaderboardClose.addEventListener('click', closeLeaderboard);
+ui.leaderboardOverlay.addEventListener('click', (event) => {
+  if (event.target === ui.leaderboardOverlay) closeLeaderboard();
+});
 
 const readInput = () => ({
   throttle: keys.throttle ? 1 : 0,
@@ -306,6 +339,7 @@ function startPose() {
 
 function start() {
   if (game.waveMode) endWave();
+  closeLeaderboard(false);
   audio.unlock().then(() => audio.event('start'));
   const p = startPose();
   placeBike(p.x, p.z, p.heading, 0);
@@ -329,6 +363,7 @@ function start() {
   game.runId += 1;
   game.runSubmitted = false;
   game.runSubmitting = false;
+  submittedRank = null;
   game.leaderboardWarmed = false;
   ghostRecorder.reset();
   game.timeScale = 1;
@@ -341,6 +376,7 @@ function start() {
   ui.submitButton.textContent = 'Submit';
   ui.finishLeaderboard.hidden = true;
   ui.finishLeaderboard.replaceChildren();
+  ui.leaderboardFinish.hidden = true;
   ui.wavePanel.hidden = true;
   ui.hud.classList.remove('wave-mode');
   ui.touch.hidden = false;
@@ -383,8 +419,39 @@ const CRASH_TEXT = {
   tree: 'Hit a tree',
 };
 
+function placeLabel(rank) {
+  if (rank === 1) return '1ST';
+  if (rank === 2) return '2ND';
+  if (rank === 3) return '3RD';
+  return `${rank}TH`;
+}
+
+function medalBadge(rank) {
+  const medal = { 1: 'gold', 2: 'silver', 3: 'bronze' }[rank];
+  if (!medal) return null;
+  const badge = document.createElement('span');
+  badge.className = `medal medal-${medal}`;
+  badge.setAttribute('aria-label', `${placeLabel(rank)} place`);
+  if (rank === 1) {
+    const crown = document.createElement('span');
+    crown.className = 'medal-crown';
+    crown.setAttribute('aria-hidden', 'true');
+    crown.textContent = '♛';
+    badge.append(crown);
+  }
+  badge.append(document.createTextNode(placeLabel(rank)));
+  return badge;
+}
+
+function appendRank(cell, rank, label = String(rank)) {
+  const badge = medalBadge(rank);
+  if (badge) cell.append(badge);
+  else cell.textContent = label;
+}
+
 function showOverlay(title, body, button) {
   ui.overlay.classList.remove('start');
+  ui.leaderboardFinish.hidden = game.mode !== 'finished';
   ui.title.textContent = title;
   ui.body.textContent = body;
   ui.button.textContent = button;
@@ -402,19 +469,18 @@ function renderStartBoard(empty = 'No times yet. Set the first one.') {
   } else {
     const list = document.createElement('ol');
     list.className = 'arcade-scores';
-    const places = ['1ST', '2ND', '3RD', '4TH', '5TH'];
     leaderboardEntries.slice(0, 5).forEach((entry, index) => {
       const row = document.createElement('li');
-      for (const [cls, text] of [
-        ['place', places[index]],
-        ['name', entry.name],
-        ['time', Number(entry.time).toFixed(2)],
-      ]) {
-        const cell = document.createElement('span');
-        cell.className = cls;
-        cell.textContent = text;
-        row.append(cell);
-      }
+      const place = document.createElement('span');
+      place.className = 'place';
+      appendRank(place, index + 1, placeLabel(index + 1));
+      const name = document.createElement('span');
+      name.className = 'name';
+      name.textContent = cleanText(entry.name);
+      const time = document.createElement('span');
+      time.className = 'time';
+      time.textContent = Number(entry.time).toFixed(2);
+      row.append(place, name, time);
       list.append(row);
     });
     board.append(list);
@@ -440,7 +506,12 @@ function refreshStartBoard() {
 
 function renderLeaderboard(container, entries, playerRank = null) {
   container.replaceChildren();
-  if (!entries?.length) return;
+  if (!entries?.length) {
+    const note = document.createElement('p');
+    note.textContent = 'No scores yet';
+    container.append(note);
+    return;
+  }
   const table = document.createElement('table');
   table.className = 'leaderboard';
   const head = document.createElement('thead');
@@ -452,18 +523,34 @@ function renderLeaderboard(container, entries, playerRank = null) {
   }
   head.append(header);
   const body = document.createElement('tbody');
-  entries.forEach((entry, index) => {
+  let playerRow = null;
+  entries.slice(0, 50).forEach((entry, index) => {
     const row = document.createElement('tr');
-    if (index + 1 === playerRank) row.className = 'player-row';
-    for (const value of [String(index + 1), entry.name, `${Number(entry.time).toFixed(2)} s`]) {
-      const cell = document.createElement('td');
-      cell.textContent = value;
-      row.append(cell);
+    if (index + 1 === playerRank) {
+      row.className = 'player-row';
+      row.id = 'full-board-player';
+      playerRow = row;
     }
+    const rankCell = document.createElement('td');
+    appendRank(rankCell, index + 1);
+    const name = document.createElement('td');
+    name.textContent = cleanText(entry.name);
+    const time = document.createElement('td');
+    time.textContent = `${Number(entry.time).toFixed(2)} s`;
+    row.append(rankCell, name, time);
     body.append(row);
   });
   table.append(head, body);
   container.append(table);
+  if (playerRow) {
+    requestAnimationFrame(() => playerRow.scrollIntoView({ block: 'center' }));
+  }
+}
+
+function showFullBoardMessage(message) {
+  const note = document.createElement('p');
+  note.textContent = message;
+  ui.fullLeaderboard.replaceChildren(note);
 }
 
 function renderRankOverlay(container, rows) {
@@ -483,15 +570,50 @@ function renderRankOverlay(container, rows) {
   for (const entry of rows) {
     const row = document.createElement('tr');
     if (entry.highlighted) row.className = 'player-row';
-    for (const value of [String(entry.rank), entry.name, `${Number(entry.time).toFixed(2)} s`]) {
-      const cell = document.createElement('td');
-      cell.textContent = value;
-      row.append(cell);
-    }
+    const rankCell = document.createElement('td');
+    appendRank(rankCell, entry.rank);
+    const name = document.createElement('td');
+    name.textContent = entry.name;
+    const time = document.createElement('td');
+    time.textContent = `${Number(entry.time).toFixed(2)} s`;
+    row.append(rankCell, name, time);
     body.append(row);
   }
   table.append(head, body);
   container.append(table);
+}
+
+function openLeaderboard() {
+  if (!ui.leaderboardOverlay.hidden) return;
+  leaderboardReturnFocus = document.activeElement;
+  ui.leaderboardOverlay.hidden = false;
+  showFullBoardMessage('Loading...');
+  ui.leaderboardClose.focus();
+  const requestId = ++leaderboardRequestId;
+  getLeaderboard().then((result) => {
+    if (requestId !== leaderboardRequestId || ui.leaderboardOverlay.hidden) return;
+    if (!result) {
+      showFullBoardMessage('Leaderboard offline');
+      return;
+    }
+    leaderboardEntries = Array.isArray(result.top) ? result.top : [];
+    bestGhost = result.ghost || null;
+    renderStartBoard();
+    renderLeaderboard(ui.fullLeaderboard, leaderboardEntries, submittedRank);
+  }).catch(() => {
+    if (requestId === leaderboardRequestId && !ui.leaderboardOverlay.hidden) {
+      showFullBoardMessage('Leaderboard offline');
+    }
+  });
+}
+
+function closeLeaderboard(restoreFocus = true) {
+  if (ui.leaderboardOverlay.hidden) return;
+  ui.leaderboardOverlay.hidden = true;
+  leaderboardRequestId += 1;
+  const returnFocus = leaderboardReturnFocus;
+  leaderboardReturnFocus = null;
+  if (restoreFocus && returnFocus?.isConnected) returnFocus.focus({ preventScroll: true });
 }
 
 function makeRunStats(name = 'Rider') {
@@ -529,6 +651,7 @@ async function submitRun() {
     }
     game.runSubmitted = true;
     ui.submitButton.textContent = 'Submitted';
+    submittedRank = result.rank ?? null;
     leaderboardEntries = result.top || [];
     renderStartBoard();
     startWave(result, run);
@@ -693,7 +816,11 @@ function startWave(result, playerRun) {
     ui.waveLeaderboard,
     buildRankOverlayRows(result?.top, result?.rank, playerRun),
   );
+  const rival = rivalLine(result?.top, result?.rank);
+  ui.waveRivalLine.textContent = rival || '';
+  ui.waveRivalLine.hidden = !rival;
   ui.wavePanel.hidden = false;
+  ui.waveBadge.hidden = false;
   ui.hud.classList.add('wave-mode');
   ui.touch.hidden = true;
   const bike = game.bike;
@@ -740,6 +867,7 @@ function endWave() {
   if (!game.waveMode) return;
   game.waveMode = false;
   ui.wavePanel.hidden = true;
+  ui.waveBadge.hidden = true;
   ui.hud.classList.remove('wave-mode');
   ui.touch.hidden = false;
   if (waveOtter) {
@@ -765,6 +893,7 @@ function endWave() {
 
 function showMenu() {
   if (game.waveMode) endWave();
+  closeLeaderboard(false);
   const p = startPose();
   game.mode = 'ready';
   placeBike(p.x, p.z, p.heading, 0);
@@ -802,6 +931,7 @@ function showMenu() {
   ui.submitButton.textContent = 'Submit';
   ui.finishLeaderboard.hidden = true;
   ui.finishLeaderboard.replaceChildren();
+  ui.leaderboardFinish.hidden = true;
   ui.wavePanel.hidden = true;
   ui.hud.classList.remove('wave-mode');
   ui.touch.hidden = true;
