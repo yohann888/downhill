@@ -599,6 +599,24 @@ describe('power-up physics', () => {
     expect(boosted.v).toBeCloseTo(comparison.v, 10);
   });
 
+  it('lets braking override coffee boost on a steep downhill', () => {
+    const terrain = createPlaneTerrain(0.35);
+    const boosted = createBike({ x: 0, z: 0 }, terrain);
+    const unboosted = createBike({ x: 0, z: 0 }, terrain);
+    boosted.v = 18;
+    unboosted.v = 18;
+    applyPickup(boosted, 'coffee');
+    const brake = { throttle: 0, brake: 1, steer: 0 };
+
+    for (let elapsed = 0; elapsed < 1; elapsed += DT) {
+      stepBike(boosted, brake, terrain, [], DT);
+      stepBike(unboosted, brake, terrain, [], DT);
+    }
+
+    expect(boosted.v).toBeLessThan(18);
+    expect(Math.abs(boosted.v - unboosted.v)).toBeLessThanOrEqual(0.1);
+  });
+
   it('allows one double jump per air only while the energy timer is active', () => {
     const terrain = createPlaneTerrain();
     const unpowered = createBike({ x: 0, z: 0 }, terrain);

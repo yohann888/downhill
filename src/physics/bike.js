@@ -208,7 +208,7 @@ export function stepBike(state, input, terrain, obstacles, dt) {
       PEDAL_POWER / Math.max(state.v, 0.1),
     );
     const boostAcceleration =
-      state.boostTime > 0 && state.v < state.boostTarget
+      state.boostTime > 0 && state.v < state.boostTarget && !input.brake
         ? BOOST_ACCEL
         : 0;
     const acceleration =
