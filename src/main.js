@@ -22,6 +22,13 @@ const qualityMode = queryParams.get('quality');
 const initialQuality = qualityMode === 'low' ? 3 : 0;
 const autoQualityEnabled = qualityMode !== 'high';
 const debug = queryParams.has('debug');
+const requestedTime = queryParams.get('time');
+const storedTime = localStorage.getItem('downhill.time');
+let timeMode = ['day', 'night'].includes(requestedTime)
+  ? requestedTime
+  : ['day', 'night'].includes(storedTime)
+    ? storedTime
+    : 'day';
 
 const canvas = document.getElementById('game');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -81,9 +88,13 @@ const ui = {
   ghostStatus: document.getElementById('ghost-status'),
   subtitle: document.getElementById('commentary-subtitle'),
   mute: document.getElementById('mute'),
+  music: document.getElementById('music-select'),
+  timeToggle: document.getElementById('time-toggle'),
   volume: document.getElementById('volume'),
 };
 ui.mute.textContent = audio.muted ? 'Sound off' : 'Sound on';
+ui.music.textContent = `Music: ${audio.music.label}`;
+ui.timeToggle.textContent = timeMode === 'night' ? 'Night' : 'Day';
 for (const checkpoint of terrain.checkpoints) {
   const mark = document.createElement('span');
   const progress = Math.max(0, Math.min(1, -checkpoint.z / terrain.courseLength));
@@ -92,6 +103,22 @@ for (const checkpoint of terrain.checkpoints) {
   ui.checkpointMarks.append(mark);
 }
 ui.mute.addEventListener('click', () => { ui.mute.textContent = audio.toggleMute() ? 'Sound off' : 'Sound on'; ui.mute.blur(); });
+ui.music.addEventListener('click', () => {
+  ui.music.textContent = `Music: ${audio.nextMusic().label}`;
+  ui.music.blur();
+});
+function setTimeMode(mode, persist = true) {
+  timeMode = mode === 'night' ? 'night' : 'day';
+  world.setTimeOfDay(timeMode);
+  model.setHeadlamp(timeMode === 'night');
+  ui.timeToggle.textContent = timeMode === 'night' ? 'Night' : 'Day';
+  if (persist) localStorage.setItem('downhill.time', timeMode);
+}
+ui.timeToggle.addEventListener('click', () => {
+  setTimeMode(timeMode === 'night' ? 'day' : 'night');
+  ui.timeToggle.blur();
+});
+setTimeMode(timeMode, false);
 ui.volume.value = String(audio.volume);
 ui.volume.addEventListener('input', () => audio.setVolume(Number(ui.volume.value)));
 
@@ -111,6 +138,15 @@ const KEYMAP = {
   KeyW: 'throttle', ArrowUp: 'throttle', KeyS: 'brake', ArrowDown: 'brake',
 };
 window.addEventListener('keydown', (e) => {
+  if (e.target === ui.nameInput) return;
+  if (e.code === 'KeyN' && !e.repeat) {
+    ui.music.click();
+    e.preventDefault();
+  }
+  if (e.code === 'KeyL' && !e.repeat) {
+    ui.timeToggle.click();
+    e.preventDefault();
+  }
   if (game.waveMode) {
     if (e.code === 'Enter' || e.code === 'KeyR') start();
     e.preventDefault();

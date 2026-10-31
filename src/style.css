@@ -56,6 +56,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #000; font-f
   #touch button { width: 62px; height: 52px; }
   #touch button[data-key="left"], #touch button[data-key="right"] { width: 52px; }
 }
-#mute { position: absolute; right: 16px; top: 58px; pointer-events: auto; font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,.4); background: rgba(0,0,0,.25); color: #fff; cursor: pointer; }
+#audio-controls { position: absolute; right: 16px; top: 58px; display: flex; gap: 6px; pointer-events: auto; }
+#audio-controls button { font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,.4); background: rgba(0,0,0,.25); color: #fff; cursor: pointer; }
 #volume-label { position: absolute; right: 16px; top: 92px; display: flex; align-items: center; gap: 8px; pointer-events: auto; font-size: 12px; text-shadow: 0 1px 4px rgba(0,0,0,.6); }
 #volume { width: 104px; accent-color: #ffb547; cursor: pointer; }

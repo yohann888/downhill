@@ -24,6 +24,82 @@ const SUN_DIRECTION = new THREE.Vector3().setFromSphericalCoords(
   THREE.MathUtils.degToRad(90 - 9),
   THREE.MathUtils.degToRad(200),
 );
+const MOON_DIRECTION = new THREE.Vector3().setFromSphericalCoords(
+  1,
+  THREE.MathUtils.degToRad(35),
+  Math.PI,
+);
+
+function createNightSkyMaterial() {
+  return new THREE.ShaderMaterial({
+    side: THREE.BackSide,
+    depthWrite: false,
+    uniforms: {
+      horizon: { value: new THREE.Color(0x18233d) },
+      zenith: { value: new THREE.Color(0x030714) },
+    },
+    vertexShader: `
+      varying float vHeight;
+      void main() {
+        vHeight = normalize(position).y;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 horizon;
+      uniform vec3 zenith;
+      varying float vHeight;
+      void main() {
+        float gradient = smoothstep(-0.1, 0.85, vHeight);
+        gl_FragColor = vec4(mix(horizon, zenith, gradient), 1.0);
+      }
+    `,
+  });
+}
+
+function createStars() {
+  const random = createRandom(910);
+  const positions = new Float32Array(2500 * 3);
+  for (let index = 0; index < 2500; index += 1) {
+    const y = random() * 2 - 1;
+    const angle = random() * Math.PI * 2;
+    const horizontal = Math.sqrt(1 - y * y);
+    positions[index * 3] = horizontal * Math.cos(angle) * 6000;
+    positions[index * 3 + 1] = y * 6000;
+    positions[index * 3 + 2] = horizontal * Math.sin(angle) * 6000;
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  const points = new THREE.Points(
+    geometry,
+    new THREE.PointsMaterial({
+      color: 0xdce6ff,
+      size: 2.2,
+      sizeAttenuation: false,
+      transparent: true,
+      opacity: 0.86,
+      depthWrite: false,
+    }),
+  );
+  points.frustumCulled = false;
+  return points;
+}
+
+function createMoonGlowTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 128;
+  const context = canvas.getContext('2d');
+  const gradient = context.createRadialGradient(64, 64, 4, 64, 64, 64);
+  gradient.addColorStop(0, 'rgba(225,235,255,0.65)');
+  gradient.addColorStop(0.25, 'rgba(165,190,255,0.24)');
+  gradient.addColorStop(1, 'rgba(115,145,255,0)');
+  context.fillStyle = gradient;
+  context.fillRect(0, 0, 128, 128);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
 
 function acrossOffsets() {
   const offsets = [];
@@ -144,7 +220,7 @@ function buildRangeMesh(terrain, groundTextures) {
   const segments = 480;
   const geometry = new THREE.PlaneGeometry(size, size, segments, segments);
   geometry.rotateX(-Math.PI / 2);
-  geometry.translate(0, 0, -900);
+  geometry.translate(0, 0, -terrain.courseLength * 0.75);
   const { farHeight, lakeY } = createFarHeight(terrain);
   const detail = createValueNoise(29);
   const pos = geometry.attributes.position;
@@ -275,13 +351,14 @@ function buildTrees(terrain, obstacles) {
   return group;
 }
 
-function buildObstacles(terrain, obstacles, renderer) {
+function buildObstacles(terrain, obstacles, renderer, nightMaterials) {
   const group = new THREE.Group();
   const movingMeshes = [];
   const otterMeshes = [];
   const stickerMaterial = createOtterStickerMaterial(renderer);
   let otterTemplate = null;
   const rockMaterial = new THREE.MeshStandardMaterial({ color: 0x86827a, roughness: 0.9, flatShading: true });
+  nightMaterials.add(rockMaterial);
   const woodMaterial = new THREE.MeshStandardMaterial({ color: 0x6a4a2e, roughness: 0.9 });
   const cutMaterial = new THREE.MeshStandardMaterial({ color: 0xc19a6b, roughness: 0.9 });
   const rockGeometry = new THREE.DodecahedronGeometry(1, 0);
@@ -431,6 +508,7 @@ function buildMarkers(terrain) {
 }
 
 export function buildWorld(scene, renderer, terrain, obstacles) {
+  let timeMode = 'day';
   const sky = new Sky();
   sky.scale.setScalar(20000);
   const u = sky.material.uniforms;
@@ -450,18 +528,88 @@ export function buildWorld(scene, renderer, terrain, obstacles) {
     envSky.material.uniforms[key].value = u[key].value;
   }
   envScene.add(envSky);
-  scene.environment = pmrem.fromScene(envScene).texture;
+  let dayEnvironment = pmrem.fromScene(envScene).texture;
+  scene.environment = dayEnvironment;
   scene.environmentIntensity = 0.55;
+  let dayBackground = scene.background;
+  const dayBackgroundRotation = scene.backgroundRotation.clone();
+  const dayEnvironmentRotation = scene.environmentRotation.clone();
+  const nightEnvironmentScene = new THREE.Scene();
+  nightEnvironmentScene.background = new THREE.Color(0x030714);
+  nightEnvironmentScene.add(new THREE.Mesh(
+    new THREE.SphereGeometry(100, 32, 16),
+    createNightSkyMaterial(),
+  ));
+  const environmentMoon = new THREE.Mesh(
+    new THREE.CircleGeometry(4, 24),
+    new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false, side: THREE.DoubleSide }),
+  );
+  environmentMoon.position.copy(MOON_DIRECTION).multiplyScalar(98);
+  environmentMoon.quaternion.setFromUnitVectors(
+    new THREE.Vector3(0, 0, 1),
+    MOON_DIRECTION.clone().negate(),
+  );
+  nightEnvironmentScene.add(environmentMoon);
+  const nightEnvironment = pmrem.fromScene(nightEnvironmentScene, 0.1).texture;
+  nightEnvironmentScene.traverse((object) => {
+    object.geometry?.dispose();
+    if (object.material) object.material.dispose();
+  });
+  const nightSky = new THREE.Mesh(
+    new THREE.SphereGeometry(7000, 32, 20),
+    createNightSkyMaterial(),
+  );
+  nightSky.frustumCulled = false;
+  nightSky.visible = false;
+  const stars = createStars();
+  stars.visible = false;
+  const moonPosition = MOON_DIRECTION.clone().multiplyScalar(5000);
+  const moon = new THREE.Mesh(
+    new THREE.CircleGeometry(70, 48),
+    new THREE.MeshBasicMaterial({ color: 0xe0e8ff, toneMapped: false, fog: false }),
+  );
+  moon.position.copy(moonPosition);
+  moon.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), MOON_DIRECTION.clone().negate());
+  moon.visible = false;
+  const moonGlow = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: createMoonGlowTexture(),
+    color: 0x9cb2ff,
+    transparent: true,
+    opacity: 0.62,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    toneMapped: false,
+  }));
+  moonGlow.position.copy(moonPosition);
+  moonGlow.scale.set(390, 390, 1);
+  moonGlow.visible = false;
+  scene.add(nightSky, stars, moonGlow, moon);
+  const nightMaterials = new Set();
+  const originalRoughness = new Map();
+  const setNightMaterials = (isNight) => {
+    for (const material of nightMaterials) {
+      if (!originalRoughness.has(material)) originalRoughness.set(material, material.roughness);
+      material.roughness = isNight
+        ? Math.min(originalRoughness.get(material), 0.75)
+        : originalRoughness.get(material);
+    }
+  };
   const pineMaterials = [];
   new THREE.TextureLoader().load('./assets/textures/sky.webp', (skyTexture) => {
     skyTexture.mapping = THREE.EquirectangularReflectionMapping;
     skyTexture.colorSpace = THREE.SRGBColorSpace;
-    scene.background = skyTexture;
-    scene.backgroundRotation.y = SKY_ROTATION;
-    scene.environmentRotation.y = SKY_ROTATION;
-    scene.environment = pmrem.fromEquirectangular(skyTexture).texture;
+    dayBackground = skyTexture;
+    dayEnvironment = pmrem.fromEquirectangular(skyTexture).texture;
+    dayBackgroundRotation.y = SKY_ROTATION;
+    dayEnvironmentRotation.y = SKY_ROTATION;
+    if (timeMode === 'day') {
+      scene.background = dayBackground;
+      scene.backgroundRotation.copy(dayBackgroundRotation);
+      scene.environmentRotation.copy(dayEnvironmentRotation);
+      scene.environment = dayEnvironment;
+    }
     for (const material of pineMaterials) {
-      material.envMap = scene.environment;
+      material.envMap = timeMode === 'night' ? nightEnvironment : dayEnvironment;
       material.needsUpdate = true;
     }
     scene.remove(sky);
@@ -481,14 +629,71 @@ export function buildWorld(scene, renderer, terrain, obstacles) {
   scene.add(sun, sun.target);
 
   const groundTextures = loadGroundTextures(renderer);
-  scene.add(buildCourseMesh(terrain, groundTextures));
+  const course = buildCourseMesh(terrain, groundTextures);
+  nightMaterials.add(course.material);
+  scene.add(course);
   scene.add(buildRangeMesh(terrain, groundTextures));
   const trees = buildTrees(terrain, obstacles);
-  const obstacleGroup = buildObstacles(terrain, obstacles, renderer);
+  const obstacleGroup = buildObstacles(terrain, obstacles, renderer, nightMaterials);
   scene.add(trees, obstacleGroup);
   scene.add(buildMarkers(terrain));
+  const daySunColor = sun.color.clone();
+  const daySunIntensity = sun.intensity;
+  const daySkyColor = hemi.color.clone();
+  const dayGroundColor = hemi.groundColor.clone();
+  const dayHemiIntensity = hemi.intensity;
+  const dayFogColor = scene.fog.color.clone();
+  const dayFogDensity = scene.fog.density;
+  const activeLightDirection = { value: SUN_DIRECTION };
+  const followTarget = new THREE.Vector3();
+  function setTimeOfDay(mode) {
+    timeMode = mode === 'night' ? 'night' : 'day';
+    const isNight = timeMode === 'night';
+    sky.visible = !isNight;
+    nightSky.visible = isNight;
+    stars.visible = isNight;
+    moon.visible = isNight;
+    moonGlow.visible = isNight;
+    if (isNight) {
+      scene.background = new THREE.Color(0x030714);
+      scene.environmentRotation.set(0, 0, 0);
+      scene.environment = nightEnvironment;
+      scene.environmentIntensity = 0.12;
+      sun.color.set(0xb7c6ff);
+      sun.intensity = 0.9;
+      hemi.color.set(0x1a2a4a);
+      hemi.groundColor.set(0x05070c);
+      hemi.intensity = 0.12;
+      scene.fog.color.set(0x0a1424);
+      scene.fog.density = 0.0006;
+      activeLightDirection.value = MOON_DIRECTION;
+    } else {
+      scene.background = dayBackground;
+      scene.backgroundRotation.copy(dayBackgroundRotation);
+      scene.environmentRotation.copy(dayEnvironmentRotation);
+      scene.environment = dayEnvironment;
+      scene.environmentIntensity = 0.55;
+      sun.color.copy(daySunColor);
+      sun.intensity = daySunIntensity;
+      hemi.color.copy(daySkyColor);
+      hemi.groundColor.copy(dayGroundColor);
+      hemi.intensity = dayHemiIntensity;
+      scene.fog.color.copy(dayFogColor);
+      scene.fog.density = dayFogDensity;
+      activeLightDirection.value = SUN_DIRECTION;
+    }
+    for (const material of pineMaterials) {
+      material.envMap = isNight ? nightEnvironment : dayEnvironment;
+      material.needsUpdate = true;
+    }
+    setNightMaterials(isNight);
+    sun.target.position.copy(followTarget);
+    sun.position.copy(followTarget).addScaledVector(activeLightDirection.value, 200);
+    return timeMode;
+  }
 
   return {
+    setTimeOfDay,
     applyModels(models) {
       const pick = (name, axis) => (models[name] ? unitMesh(models[name], axis) : null);
       const pine = (name) => {
@@ -496,7 +701,7 @@ export function buildWorld(scene, renderer, terrain, obstacles) {
         if (!model) return null;
         const materials = Array.isArray(model.material) ? model.material : [model.material];
         for (const material of materials) {
-          material.envMap = scene.environment;
+          material.envMap = timeMode === 'night' ? nightEnvironment : dayEnvironment;
           pineMaterials.push(material);
           material.envMapIntensity = 0.1;
           material.metalness = 0;
@@ -508,18 +713,26 @@ export function buildWorld(scene, renderer, terrain, obstacles) {
       };
       trees.userData.swap([pine('pine-a'), pine('pine-b')]);
       const rock = pick('boulder', 'xz');
+      const rockFlat = pick('rock-flat', 'xz');
       const otter = pick('otter', 'y');
+      for (const model of [rock, rockFlat]) {
+        const materials = Array.isArray(model?.material) ? model.material : [model?.material];
+        for (const material of materials) {
+          if (material) nightMaterials.add(material);
+        }
+      }
       obstacleGroup.userData.swap({
         boulder: rock,
-        'rock-flat': pick('rock-flat', 'xz'),
+        'rock-flat': rockFlat,
         stump: pick('stump', 'xz'),
         log: pick('log', 'xz'),
         otter,
       });
     },
     followSun(target) {
+      followTarget.copy(target);
       sun.target.position.copy(target);
-      sun.position.copy(target).addScaledVector(SUN_DIRECTION, 200);
+      sun.position.copy(target).addScaledVector(activeLightDirection.value, 200);
     },
     createWaveOtter() {
       return obstacleGroup.userData.createWaveOtter();

@@ -1,6 +1,11 @@
 const BASE = './assets/audio/';
 const LOOPS = ['tire-gravel-loop', 'wind-loop', 'freewheel-loop', 'pedal-loop', 'forest-loop', 'brake-skid'];
 const ONESHOTS = ['crash', 'otter-hit', 'land', 'checkpoint', 'finish-cheer', 'vo-go', 'vo-clean', 'vo-air', 'vo-crash', 'vo-ottified', 'vo-checkpoint', 'vo-best', 'vo-send'];
+const MUSIC_TRACKS = [
+  { id: 'music-ride', label: 'Space trance' },
+  { id: 'music-lofi', label: 'Lo-fi' },
+  { id: 'music-punk', label: 'Punk' },
+];
 const clamp01 = (value) => Math.min(1, Math.max(0, value));
 
 export function createAudio() {
@@ -11,19 +16,59 @@ export function createAudio() {
   let voiceSource = null;
   const buffers = {};
   const loops = {};
+  const loading = {};
+  const storedMusic = localStorage.getItem('downhill.music');
+  let selectedMusic = MUSIC_TRACKS.some((track) => track.id === storedMusic)
+    ? storedMusic
+    : MUSIC_TRACKS[0].id;
+  let musicSelectionVersion = 0;
+  let musicRateScale = 1;
   const storedMute = localStorage.getItem('downhill-muted');
   let muted = storedMute === '1';
   const storedVolume = localStorage.getItem('downhill-volume');
   let volume = storedVolume === null || storedVolume.trim() === '' ? 0.8 : Number(storedVolume);
   if (!Number.isFinite(volume) || volume < 0 || volume > 1) volume = 0.8;
-  async function load(name) {
-    try {
-      const res = await fetch(`${BASE}${name}.mp3`);
-      if (!res.ok) return;
-      buffers[name] = await ctx.decodeAudioData(await res.arrayBuffer());
-    } catch {
-      // Missing assets are fine during development.
+  function load(name) {
+    if (buffers[name]) return Promise.resolve(buffers[name]);
+    if (loading[name]) return loading[name];
+    loading[name] = (async () => {
+      try {
+        const res = await fetch(`${BASE}${name}.mp3`);
+        if (!res.ok) return null;
+        buffers[name] = await ctx.decodeAudioData(await res.arrayBuffer());
+        return buffers[name];
+      } catch {
+        return null;
+      } finally {
+        delete loading[name];
+      }
+    })();
+    return loading[name];
+  }
+
+  async function switchMusic(name, version) {
+    const buffer = await load(name);
+    if (!buffer || !ctx || version !== musicSelectionVersion || name !== selectedMusic) return;
+    const now = ctx.currentTime;
+    const previousSource = musicSource;
+    const previousGain = musicGain;
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.loop = true;
+    source.playbackRate.value = musicRateScale;
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0, now);
+    source.connect(gain).connect(master);
+    source.start(now);
+    gain.gain.linearRampToValueAtTime(voiceSource ? 0.1 : 0.25, now + 0.5);
+    if (previousGain && previousSource) {
+      previousGain.gain.cancelScheduledValues(now);
+      previousGain.gain.setValueAtTime(previousGain.gain.value, now);
+      previousGain.gain.linearRampToValueAtTime(0, now + 0.5);
+      previousSource.stop(now + 0.51);
     }
+    musicSource = source;
+    musicGain = gain;
   }
 
   function startLoop(name, gainValue = 0) {
@@ -116,18 +161,25 @@ export function createAudio() {
       master = ctx.createGain();
       master.gain.value = muted ? 0 : volume;
       master.connect(ctx.destination);
-      await Promise.all([...LOOPS, ...ONESHOTS, 'music-ride'].map(load));
+      await Promise.all([...LOOPS, ...ONESHOTS].map(load));
       for (const name of LOOPS) startLoop(name);
       setLoop('forest-loop', 0.35);
-      if (buffers['music-ride']) {
-        musicSource = ctx.createBufferSource();
-        musicSource.buffer = buffers['music-ride'];
-        musicSource.loop = true;
-        musicGain = ctx.createGain();
-        musicGain.gain.value = 0.25;
-        musicSource.connect(musicGain).connect(master);
-        musicSource.start();
+      if (!musicSource) {
+        const version = musicSelectionVersion;
+        await load(selectedMusic);
+        await switchMusic(selectedMusic, version);
       }
+    },
+    get music() {
+      return MUSIC_TRACKS.find((track) => track.id === selectedMusic);
+    },
+    nextMusic() {
+      const index = MUSIC_TRACKS.findIndex((track) => track.id === selectedMusic);
+      selectedMusic = MUSIC_TRACKS[(index + 1) % MUSIC_TRACKS.length].id;
+      localStorage.setItem('downhill.music', selectedMusic);
+      musicSelectionVersion += 1;
+      if (ctx) void switchMusic(selectedMusic, musicSelectionVersion);
+      return MUSIC_TRACKS.find((track) => track.id === selectedMusic);
     },
     toggleMute() {
       muted = !muted;
@@ -149,6 +201,7 @@ export function createAudio() {
       const speed01 = Math.min(1, v / 20);
       const playbackRateScale = timeScale < 0.999 ? 0.85 : 1;
       const rate = (base) => base * playbackRateScale;
+      musicRateScale = playbackRateScale;
       if (musicSource) {
         musicSource.playbackRate.setTargetAtTime(playbackRateScale, ctx.currentTime, 0.1);
       }
