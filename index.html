@@ -32,9 +32,26 @@
       <div id="flash"></div>
       <a id="brand-badge" class="devin-badge devin-badge-hud" href="https://devin.ai" target="_blank" rel="noopener"><img class="devin-logo-mark" src="./assets/devin-logo.svg" alt="Devin logo"><img class="devin-otter" src="./assets/otter-logo.png" alt=""><span>BUILT WITH DEVIN</span></a>
       <div id="audio-controls">
-        <button id="mute" type="button"></button>
-        <button id="music-select" type="button"></button>
-        <button id="time-toggle" type="button"></button>
+        <button id="mute" type="button">
+          <span class="hud-label"></span>
+          <span class="hud-icon" aria-hidden="true">
+            <svg class="icon-sound-on" viewBox="0 0 24 24" focusable="false"><path d="M11 5 6 9H3v6h3l5 4V5Z"/><path d="M15 9a5 5 0 0 1 0 6M17.5 6.5a8.5 8.5 0 0 1 0 11"/></svg>
+            <svg class="icon-sound-off" viewBox="0 0 24 24" focusable="false"><path d="M11 5 6 9H3v6h3l5 4V5Z"/><path d="m16 9 5 6m0-6-5 6"/></svg>
+          </span>
+        </button>
+        <button id="music-select" type="button">
+          <span class="hud-label"></span>
+          <span class="hud-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" focusable="false"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+          </span>
+        </button>
+        <button id="time-toggle" type="button">
+          <span class="hud-label"></span>
+          <span class="hud-icon" aria-hidden="true">
+            <svg class="icon-day" viewBox="0 0 24 24" focusable="false"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"/></svg>
+            <svg class="icon-night" viewBox="0 0 24 24" focusable="false"><path d="M20.5 15.5A8.5 8.5 0 0 1 8.5 3.5 8.5 8.5 0 1 0 20.5 15.5Z"/></svg>
+          </span>
+        </button>
       </div>
       <label id="volume-label" for="volume">Volume
         <input id="volume" type="range" min="0" max="1" step="0.01" />
@@ -44,11 +61,14 @@
       <div class="panel">
         <div id="start-menu">
           <p class="arcade-presents">devkick presents</p>
-          <div class="arcade-logo">
-            <h1 class="arcade-title" data-text="DOWNHILL">DOWNHILL</h1>
-            <div class="arcade-burst"><span>Don't get<br>Ottified!</span></div>
+          <div class="arcade-heading">
+            <div class="arcade-logo">
+              <h1 class="arcade-title" data-text="DOWNHILL">DOWNHILL</h1>
+            </div>
+            <div class="arcade-burst arcade-burst-desktop"><span>Don't get<br>Ottified!</span></div>
           </div>
           <p class="arcade-ribbon">Mountain bike mayhem</p>
+          <div class="arcade-burst arcade-burst-mobile" aria-hidden="true"><span>Don't get<br>Ottified!</span></div>
           <div class="menu-grid">
             <section class="menu-card">
               <h2>High scores</h2>
@@ -88,7 +108,7 @@
           <button type="submit">Submit</button>
           <div id="finish-leaderboard"></div>
         </form>
-        <button id="overlay-button" type="button">Press start</button>
+        <div class="start-menu-footer"><button id="overlay-button" type="button">Press start</button></div>
         <a id="brand-badge-title" class="devin-badge devin-badge-title" href="https://devin.ai" target="_blank" rel="noopener"><img class="devin-logo-mark" src="./assets/devin-logo.svg" alt="Devin logo"><img class="devin-otter" src="./assets/otter-logo.png" alt=""><span>BUILT WITH DEVIN</span></a>
         <button id="leaderboard-open-finish" class="leaderboard-open" type="button" hidden>Leaderboard</button>
         <button id="menu-button" type="button" class="menu-secondary">Main menu</button>

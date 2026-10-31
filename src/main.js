@@ -126,7 +126,22 @@ const ui = {
   timeToggle: document.getElementById('time-toggle'),
   volume: document.getElementById('volume'),
 };
-ui.mute.textContent = audio.muted ? 'Sound off' : 'Sound on';
+function syncMuteButton() {
+  const muted = audio.muted;
+  ui.mute.classList.toggle('is-muted', muted);
+  syncHudButton(ui.mute, muted ? 'Sound off' : 'Sound on');
+}
+function syncTimeButton() {
+  const isNight = timeMode === 'night';
+  ui.timeToggle.classList.toggle('is-night', isNight);
+  syncHudButton(ui.timeToggle, isNight ? 'Night' : 'Day');
+}
+function syncHudButton(button, label) {
+  button.querySelector('.hud-label').textContent = label;
+  button.setAttribute('aria-label', label);
+  button.title = label;
+}
+syncMuteButton();
 const menuMusic = document.getElementById('menu-music');
 const youtubeControls = document.getElementById('youtube-music-controls');
 const youtubeLink = document.getElementById('youtube-link');
@@ -160,10 +175,24 @@ function loadYouTubeApi() {
 function positionYouTubeMenu() {
   if (!youtubeContainer.classList.contains('yt-menu')) return;
   const bounds = youtubePlayerSlot.getBoundingClientRect();
-  const left = Math.max(0, Math.min(window.innerWidth - 204, bounds.left + (bounds.width - 204) / 2));
-  const top = Math.max(0, Math.min(window.innerHeight - 117, bounds.top));
+  const panel = ui.overlay.querySelector('.panel');
+  const panelBounds = panel.getBoundingClientRect();
+  const footerBounds = ui.overlay.querySelector('.start-menu-footer').getBoundingClientRect();
+  const visibleBounds = {
+    left: Math.max(0, panelBounds.left),
+    right: Math.min(window.innerWidth, panelBounds.right),
+    top: Math.max(0, panelBounds.top),
+    bottom: Math.min(window.innerHeight, panelBounds.bottom, footerBounds.top),
+  };
+  const fullyVisible = bounds.left >= visibleBounds.left
+    && bounds.right <= visibleBounds.right
+    && bounds.top >= visibleBounds.top
+    && bounds.bottom <= visibleBounds.bottom;
+  const left = bounds.left + (bounds.width - 204) / 2;
+  const top = bounds.top;
   youtubeContainer.style.setProperty('--yt-menu-left', `${left}px`);
   youtubeContainer.style.setProperty('--yt-menu-top', `${top}px`);
+  youtubeContainer.style.visibility = fullyVisible ? 'visible' : 'hidden';
 }
 
 function fallbackFromYouTube(message) {
@@ -183,6 +212,7 @@ function syncYouTubeUi() {
   const active = audio.music.id === 'youtube';
   const menuVisible = ui.overlay.classList.contains('start') && !ui.overlay.classList.contains('hidden');
   const menuPlayer = active && menuVisible;
+  youtubeContainer.style.visibility = 'visible';
   youtubeContainer.classList.toggle('yt-menu', menuPlayer);
   youtubeContainer.classList.toggle('yt-ride', active && !menuVisible);
   youtubePlayerSlot.classList.toggle('yt-menu-active', menuPlayer);
@@ -193,17 +223,8 @@ function syncYouTubeUi() {
     return;
   }
   if (menuPlayer) {
-    const revealPlayer = () => {
-      positionYouTubeMenu();
-      const panel = ui.overlay.querySelector('.panel');
-      if (getComputedStyle(panel).overflowY !== 'auto') return;
-      const playerBounds = youtubeContainer.getBoundingClientRect();
-      const panelBounds = panel.getBoundingClientRect();
-      if (playerBounds.bottom > panelBounds.bottom) panel.scrollTop += playerBounds.bottom - panelBounds.bottom;
-      else if (playerBounds.top < panelBounds.top) panel.scrollTop -= panelBounds.top - playerBounds.top;
-    };
-    requestAnimationFrame(revealPlayer);
-    void document.fonts.ready.then(revealPlayer);
+    requestAnimationFrame(positionYouTubeMenu);
+    void document.fonts.ready.then(positionYouTubeMenu);
   }
   if (!active) {
     youtubeRequested = false;
@@ -315,7 +336,8 @@ for (const option of RIDER_OPTIONS) {
 }
 syncRiderUi();
 function syncMusicUi() {
-  ui.music.textContent = `Music: ${audio.music.label}`;
+  const label = `Music: ${audio.music.label}`;
+  syncHudButton(ui.music, label);
   audio.setRain(audio.music.id === 'music-rain');
   world.setRain(audio.music.id === 'music-rain', initialQuality >= 2);
   syncYouTubeUi();
@@ -342,7 +364,7 @@ for (const track of audio.tracks) {
   menuMusic.append(button);
 }
 syncMusicUi();
-ui.timeToggle.textContent = timeMode === 'night' ? 'Night' : 'Day';
+syncTimeButton();
 for (const checkpoint of terrain.checkpoints) {
   const mark = document.createElement('span');
   const progress = Math.max(0, Math.min(1, -checkpoint.z / terrain.courseLength));
@@ -352,7 +374,7 @@ for (const checkpoint of terrain.checkpoints) {
 }
 ui.mute.addEventListener('click', () => {
   const muted = audio.toggleMute();
-  ui.mute.textContent = muted ? 'Sound off' : 'Sound on';
+  syncMuteButton();
   if (muted) youtubePlayer?.pauseVideo();
   else if (youtubeRequested && audio.music.id === 'youtube') youtubePlayer?.playVideo();
   ui.mute.blur();
@@ -368,7 +390,7 @@ function setTimeMode(mode, persist = true) {
   timeMode = mode === 'night' ? 'night' : 'day';
   world.setTimeOfDay(timeMode);
   model.setHeadlamp(timeMode === 'night');
-  ui.timeToggle.textContent = timeMode === 'night' ? 'Night' : 'Day';
+  syncTimeButton();
   if (persist) localStorage.setItem('downhill.time', timeMode);
 }
 ui.timeToggle.addEventListener('click', () => {

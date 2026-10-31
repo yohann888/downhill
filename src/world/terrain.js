@@ -129,6 +129,16 @@ export function createTerrain(seed = 1) {
 
   const pathWeightAt = (x, z) => pathAt(x, z)?.weight ?? 0;
 
+  const kickerLift = (s) => {
+    let lift = 0;
+    for (const kicker of kickers) {
+      if (s >= kicker.s - 6 && s < kicker.s) {
+        lift += kicker.height * smoothstep(kicker.s - 6, kicker.s, s);
+      }
+    }
+    return lift;
+  };
+
   const heightAt = (x, z) => {
     const s = -z;
     const cx = centerX(z);
@@ -137,11 +147,7 @@ export function createTerrain(seed = 1) {
     let height = profileAt(s);
 
     if (Math.abs(d) <= hw) {
-      for (const kicker of kickers) {
-        if (s >= kicker.s - 6 && s < kicker.s) {
-          height += kicker.height * smoothstep(kicker.s - 6, kicker.s, s);
-        }
-      }
+      height += kickerLift(s);
       height += trailNoise(x / 3, z / 3) * 0.08;
     } else {
       const distanceOutside = Math.abs(d) - hw;
@@ -152,6 +158,9 @@ export function createTerrain(seed = 1) {
         mountainNoise(x / 18, z / 18) * mountainAmplitude;
       const path = pathAt(x, z);
       height = path ? rough + (path.bench - rough) * path.weight : rough;
+      height +=
+        kickerLift(s) *
+        (1 - smoothstep(hw, hw + 2.5, Math.abs(d)));
     }
     return height;
   };

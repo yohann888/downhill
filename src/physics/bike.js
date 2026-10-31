@@ -83,6 +83,7 @@ export function createBike({ x, z, heading = 0 }, terrain) {
     aLat: 0,
     aLatSigned: 0,
     aLong: 0,
+    gripLimit: null,
     load: 1,
     skid: 0,
     jumpCooldown: 0,
@@ -125,7 +126,7 @@ export function stepBike(state, input, terrain, obstacles, dt) {
   const deltaMax = Math.min(
     STEER_MAX_LOW,
     Math.atan(
-      (STEER_OVERDEMAND * surface.mu * G * WHEELBASE) /
+      (STEER_OVERDEMAND * (state.gripLimit ?? surface.mu * G) * WHEELBASE) /
         (speedForSteering * speedForSteering),
     ),
   );
@@ -201,6 +202,7 @@ export function stepBike(state, input, terrain, obstacles, dt) {
     const cosPhi = Math.cos(phi);
     const gRight = -G * Math.sin(phi);
     const grip = surface.mu * G * cosTheta * cosPhi * state.load;
+    state.gripLimit = grip;
     const brakeDemand = state.brake * grip;
     const drag = (0.5 * RHO * CDA * state.v * state.v) / M;
     const pedalForce = Math.min(
