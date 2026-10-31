@@ -23,6 +23,7 @@ import { buildRankOverlayRows, cleanText, rivalLine } from './leaderboard.js';
 import { createRecorder, sampleGhost } from './ghost.js';
 import { getEditableKeyboardTarget } from './keyboard.js';
 import { savePhoto } from './photo.js';
+import { APP_VERSION_LABEL } from './app-version.js';
 import {
   loadRiderPreference,
   RIDER_OPTIONS,
@@ -134,6 +135,9 @@ const ui = {
   photo: document.getElementById('photo-button'),
   volume: document.getElementById('volume'),
 };
+for (const element of document.querySelectorAll('.app-version')) {
+  element.textContent = APP_VERSION_LABEL;
+}
 function syncMuteButton() {
   const muted = audio.muted;
   ui.mute.classList.toggle('is-muted', muted);

@@ -34,6 +34,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #000; font-f
 .pause-actions { display: grid; gap: 8px; }
 .pause-actions button { min-height: 42px; border: 1px solid rgba(255,255,255,.45); border-radius: 6px; background: rgba(255,255,255,.1); color: #fff; font: inherit; cursor: pointer; }
 .pause-actions button:focus-visible { outline: 2px solid #ffb547; outline-offset: 2px; }
+.version-credit { margin: 14px 0 0 !important; font: 7px/1.8 'Press Start 2P', monospace; color: #dceaff; opacity: .78; }
 #overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.35); }
 #overlay.hidden { display: none; }
 .panel { text-align: center; padding: 28px 36px; border-radius: 14px; background: rgba(10,14,20,.82); max-width: 92vw; max-height: 90vh; overflow-y: auto; }
