@@ -1413,10 +1413,12 @@ async function applySelectedRider() {
   const version = ++riderLoadVersion;
   syncRiderUi(true);
   let chosen = null;
+  let chosenId = `rider-${selectedRider}`;
   try {
-    chosen = await loadModel(`rider-${selectedRider}`);
+    chosen = await loadModel(chosenId);
   } catch {
     chosen = baseModels['rider-body'];
+    chosenId = 'rider-body';
   }
   const backPrint = selectedRider === 'red' ? await backPrintPromise.catch(() => null) : null;
   if (version !== riderLoadVersion) return false;
@@ -1425,12 +1427,14 @@ async function applySelectedRider() {
     bikeFrame: clonedAsset(baseModels['bike-frame']),
     bikeWheel: clonedAsset(baseModels['bike-wheel']),
     backPrint,
+    riderId: chosenId,
   });
   ghostAssetsReady = Boolean(riderApplied && ghostModel.setAssets({
     riderBody: clonedAsset(chosen, true),
     bikeFrame: clonedAsset(baseModels['bike-frame']),
     bikeWheel: clonedAsset(baseModels['bike-wheel']),
     backPrint,
+    riderId: chosenId,
   }));
   if (ghostAssetsReady) tintGhost();
   game.ghostAssetsReady = ghostAssetsReady;

@@ -8,6 +8,7 @@
     html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #101824; }
     canvas { display: block; width: 100%; height: 100%; }
     #label { position: fixed; left: 12px; top: 12px; color: white; font: 14px sans-serif; }
+    body[data-portrait="true"] #label { display: none; }
   </style>
   <script type="importmap">
     { "imports": { "three": "../../node_modules/three/build/three.module.js" } }
@@ -18,11 +19,14 @@
   <script type="module">
     import * as THREE from '../../node_modules/three/build/three.module.js';
     import { GLTFLoader } from '../../node_modules/three/examples/jsm/loaders/GLTFLoader.js';
+    import { MeshoptDecoder } from '../../node_modules/three/examples/jsm/libs/meshopt_decoder.module.js';
 
     const query = new URLSearchParams(location.search);
     const name = query.get('name') || 'rider-red';
+    document.body.dataset.portrait = query.get('portrait') === '1' ? 'true' : 'false';
+    const lightCard = query.get('card') === 'light';
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x172331);
+    scene.background = new THREE.Color(lightCard ? 0xd2dce4 : 0x172331);
     const camera = new THREE.PerspectiveCamera(35, innerWidth / innerHeight, 0.01, 100);
     const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
     renderer.setSize(innerWidth, innerHeight);
@@ -32,15 +36,21 @@
     renderer.toneMappingExposure = 1.15;
     document.body.append(renderer.domElement);
     scene.add(new THREE.HemisphereLight(0xe6f4ff, 0x263248, 2.2));
-    const key = new THREE.DirectionalLight(0xffe4c4, 3.2);
-    key.position.set(-3, 5, 4);
+    const key = new THREE.DirectionalLight(lightCard ? 0xf5f8ff : 0xffe4c4, 3.2);
+    key.position.set(lightCard ? 4 : -3, 5, lightCard ? -4 : 4);
     scene.add(key);
     const fill = new THREE.DirectionalLight(0x66dfff, 2.2);
     fill.position.set(3, 1, -4);
     scene.add(fill);
+    if (lightCard) {
+      const rim = new THREE.DirectionalLight(0xb9eaff, 2.4);
+      rim.position.set(-3, 4, 4);
+      scene.add(rim);
+    }
     document.querySelector('#label').textContent = name;
 
     const loader = new GLTFLoader();
+    loader.setMeshoptDecoder(MeshoptDecoder);
     const source = query.get('src') || `./raw/models/${name}-rigged.glb`;
     loader.load(source, ({ scene: root }) => {
       root.updateMatrixWorld(true);
@@ -53,9 +63,9 @@
       const radius = Math.max(size.length() * 0.5, 0.4);
       const angle = THREE.MathUtils.degToRad(Number(query.get('angle') || 140));
       const portrait = query.get('portrait') === '1';
-      const distance = radius * (portrait ? 1.45 : 3.1);
+      const distance = portrait ? size.y * 1.25 : radius * 3.1;
       const targetY = portrait ? 0.35 : 0;
-      camera.position.set(Math.sin(angle) * distance, targetY + (portrait ? 0.22 : radius * 0.5), Math.cos(angle) * distance);
+      camera.position.set(Math.sin(angle) * distance, targetY + (portrait ? 0.08 : radius * 0.5), Math.cos(angle) * distance);
       camera.lookAt(0, targetY, 0);
       if (query.get('print') === '1') {
         const spine = root.getObjectByName('Spine02') || root.getObjectByName('spine2');
@@ -65,14 +75,14 @@
             const width = 0.22;
             const badge = new THREE.Mesh(
               new THREE.PlaneGeometry(width, width * 467 / 512),
-              new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false, depthTest: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2 }),
+              new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false, depthTest: true, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2 }),
             );
             root.updateMatrixWorld(true);
             const backDirection = new THREE.Vector3(0, 0, -1)
               .applyQuaternion(root.getWorldQuaternion(new THREE.Quaternion()))
               .normalize();
             const printWorldPosition = spine.getWorldPosition(new THREE.Vector3())
-              .addScaledVector(backDirection, 0.2);
+              .addScaledVector(backDirection, 0.13);
             printWorldPosition.y += 0.04;
             const printWorldRotation = new THREE.Quaternion()
               .setFromUnitVectors(new THREE.Vector3(0, 0, 1), backDirection);
