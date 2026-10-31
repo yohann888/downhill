@@ -46,6 +46,19 @@ export function createTerrain(seed = 1) {
     return 3 - 0.8 * Math.max(narrowOne, narrowTwo);
   };
 
+  const returnPaths = [];
+  let pathIndex = 0;
+  for (let s0 = 60; s0 <= COURSE_LENGTH - 60; s0 += 90) {
+    const side = pathIndex % 2 === 0 ? 1 : -1;
+    pathIndex += 1;
+    const joinStart = s0 + 45 - 15;
+    const joinEnd = s0 + 45 + 5;
+    if (kickers.some((kicker) => kicker.s >= joinStart && kicker.s <= joinEnd)) {
+      continue;
+    }
+    returnPaths.push({ s0, side, L: 45, U0: 16, PW: 1.1, PB: 1.5 });
+  }
+
   const baseGrade = (s) => {
     if (s < 40 * S) return 0.1;
     let grade =
@@ -84,6 +97,38 @@ export function createTerrain(seed = 1) {
     return profile[lower] + (profile[lower + 1] - profile[lower]) * fraction;
   };
 
+  const pathOffsetAt = (path, s) =>
+    path.U0 * (1 - smoothstep(path.s0, path.s0 + path.L, s));
+
+  const pathAt = (x, z) => {
+    const s = -z;
+    const d = x - centerX(z);
+    const hw = halfWidth(z);
+    const u = Math.abs(d) - hw;
+    if (u <= 0) return null;
+
+    let best = null;
+    for (const path of returnPaths) {
+      if (s < path.s0 - 10 || s > path.s0 + path.L || Math.sign(d) !== path.side) {
+        continue;
+      }
+      const offset = pathOffsetAt(path, s);
+      const fade = smoothstep(path.s0 - 10, path.s0, s);
+      const weight =
+        fade *
+        (1 - smoothstep(path.PW, path.PW + path.PB, Math.abs(u - offset)));
+      if (!best || weight > best.weight) {
+        best = {
+          weight,
+          bench: profileAt(s) + crossProfile(path.side * (hw + offset), hw),
+        };
+      }
+    }
+    return best && best.weight > 0 ? best : null;
+  };
+
+  const pathWeightAt = (x, z) => pathAt(x, z)?.weight ?? 0;
+
   const heightAt = (x, z) => {
     const s = -z;
     const cx = centerX(z);
@@ -101,9 +146,12 @@ export function createTerrain(seed = 1) {
     } else {
       const distanceOutside = Math.abs(d) - hw;
       const mountainAmplitude = Math.min(8, distanceOutside * 0.14);
-      height +=
+      const rough =
+        height +
         crossProfile(d, hw) +
         mountainNoise(x / 18, z / 18) * mountainAmplitude;
+      const path = pathAt(x, z);
+      height = path ? rough + (path.bench - rough) * path.weight : rough;
     }
     return height;
   };
@@ -112,7 +160,10 @@ export function createTerrain(seed = 1) {
     const d = Math.abs(x - centerX(z));
     const hw = halfWidth(z);
     const u = Math.max(0, d - hw);
-    const t = smoothstep(SHOULDER, SHOULDER + SHOULDER_BLEND, u);
+    const t =
+      pathWeightAt(x, z) >= 0.5
+        ? 0
+        : smoothstep(SHOULDER, SHOULDER + SHOULDER_BLEND, u);
     return {
       crr: CRR_TRAIL + (CRR_OFF - CRR_TRAIL) * t,
       mu: MU_TRAIL + (MU_OFF - MU_TRAIL) * t,
@@ -141,6 +192,8 @@ export function createTerrain(seed = 1) {
     halfWidth,
     checkpoints,
     kickers,
+    returnPaths,
+    pathWeightAt,
     finishZ: -COURSE_LENGTH,
     totalDrop: -profile[COURSE_LENGTH],
   };

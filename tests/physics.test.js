@@ -32,7 +32,78 @@ function fallFrom(height, grade, speed) {
   return bike;
 }
 
+function createHeightTerrain(heightAt) {
+  return {
+    heightAt,
+    surfaceAt: () => ({ crr: CRR_TRAIL, mu: MU_TRAIL, outOfBounds: false }),
+    centerX: () => 0,
+    courseLength: 900,
+    halfWidth: () => 100,
+  };
+}
+
 describe('bike physics', () => {
+  it('increases load in a sag and decreases it over a crest', () => {
+    const sagTerrain = createHeightTerrain((_x, z) => 0.02 * (z + 50) ** 2);
+    const sag = createBike({ x: 0, z: -50 }, sagTerrain);
+    sag.v = 20;
+    for (let elapsed = 0; elapsed < 0.375; elapsed += DT) {
+      stepBike(sag, noInput, sagTerrain, [], DT);
+    }
+    expect(sag.load).toBeGreaterThan(1.15);
+
+    const crestTerrain = createHeightTerrain((_x, z) => -0.02 * (z + 50) ** 2);
+    const crest = createBike({ x: 0, z: -50 }, crestTerrain);
+    crest.v = 8;
+    for (let elapsed = 0; elapsed < 0.3; elapsed += DT) {
+      stepBike(crest, noInput, crestTerrain, [], DT);
+    }
+    expect(crest.load).toBeLessThan(0.85);
+  });
+
+  it('lets steep camber steer the bike downhill without affecting gentle camber', () => {
+    const steepTerrain = createHeightTerrain((x) => 0.8 * x);
+    const steep = createBike({ x: 0, z: 0 }, steepTerrain);
+    steep.v = 12;
+    for (let elapsed = 0; elapsed < 1; elapsed += DT) {
+      stepBike(steep, noInput, steepTerrain, [], DT);
+    }
+    expect(steep.heading).toBeLessThan(-0.01);
+    expect(steep.crashed).toBeNull();
+
+    const gentleTerrain = createHeightTerrain((x) => 0.2 * x);
+    const gentle = createBike({ x: 0, z: 0 }, gentleTerrain);
+    gentle.v = 12;
+    for (let elapsed = 0; elapsed < 1; elapsed += DT) {
+      stepBike(gentle, noInput, gentleTerrain, [], DT);
+    }
+    expect(Math.abs(gentle.heading)).toBeLessThan(0.01);
+  });
+
+  it('lets a right bank increase right-turn yaw and never washes out from camber alone', () => {
+    const flatTerrain = createHeightTerrain(() => 0);
+    const bankedTerrain = createHeightTerrain((x) => -0.3 * x);
+    const flat = createBike({ x: 0, z: 0 }, flatTerrain);
+    const banked = createBike({ x: 0, z: 0 }, bankedTerrain);
+    const fullSteer = Math.atan((1.1 * MU_TRAIL * G * WHEELBASE) / 18 ** 2);
+    flat.v = 18;
+    banked.v = 18;
+    flat.steer = fullSteer;
+    banked.steer = fullSteer;
+    stepBike(flat, { ...noInput, steer: 1 }, flatTerrain, [], DT);
+    stepBike(banked, { ...noInput, steer: 1 }, bankedTerrain, [], DT);
+    expect(flat.slipping).toBe(true);
+    expect(banked.heading).toBeGreaterThan(flat.heading);
+
+    const steepTerrain = createHeightTerrain((x) => 0.8 * x);
+    const steep = createBike({ x: 0, z: 0 }, steepTerrain);
+    steep.v = 15;
+    for (let elapsed = 0; elapsed < 2; elapsed += DT) {
+      stepBike(steep, noInput, steepTerrain, [], DT);
+    }
+    expect(steep.crashed).not.toBe('washout');
+  });
+
   it('converges to analytic terminal velocity on a 30% grade', () => {
     const terrain = createPlaneTerrain(0.3);
     const bike = createBike({ x: 0, z: 0 }, terrain);

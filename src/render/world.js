@@ -119,10 +119,13 @@ function createMoonGlowTexture() {
 
 function acrossOffsets() {
   const offsets = [];
-  for (let d = -260; d < -110; d += 10) offsets.push(d);
-  for (let d = -110; d < -14; d += 4) offsets.push(d);
+  for (let d = -260; d <= -110; d += 10) offsets.push(d);
+  for (let d = -108; d >= -36; d -= 4) offsets.push(d);
+  for (let d = -32; d <= -15; d += 1) offsets.push(d);
   for (let d = -14; d <= 14; d += 0.5) offsets.push(d);
-  for (let d = 18; d <= 110; d += 4) offsets.push(d);
+  for (let d = 15; d <= 32; d += 1) offsets.push(d);
+  for (let d = 36; d <= 108; d += 4) offsets.push(d);
+  offsets.push(110);
   for (let d = 120; d <= 260; d += 10) offsets.push(d);
   return offsets;
 }
@@ -154,7 +157,15 @@ function buildCourseMesh(terrain, groundTextures) {
       const m = tint(x / 40 + 9, z / 40) * 0.5 + 0.5;
       const ad = Math.abs(d);
       const q = (p / 3) * 2;
-      splat[q] = 1 - smoothstep(hw - 0.5 + (n - 0.5) * 0.8, hw + 0.9 + (n - 0.5) * 1.2, ad);
+      splat[q] = Math.max(
+        1 -
+          smoothstep(
+            hw - 0.5 + (n - 0.5) * 0.8,
+            hw + 0.9 + (n - 0.5) * 1.2,
+            ad,
+          ),
+        terrain.pathWeightAt(x, z),
+      );
       splat[q + 1] = smoothstep(30, 90, ad) * (0.4 + 0.5 * n);
       const t = 0.82 + 0.3 * n;
       colors[p] = t * (1 + 0.12 * (m - 0.5));

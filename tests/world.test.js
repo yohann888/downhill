@@ -75,6 +75,11 @@ function distanceToObstacle(point, obstacle) {
   );
 }
 
+function returnPathOffset(path, s) {
+  const t = Math.max(0, Math.min(1, (s - path.s0) / path.L));
+  return path.U0 * (1 - t * t * (3 - 2 * t));
+}
+
 describe('terrain and obstacle generation', () => {
   it('is deterministic for identical scripted runs', () => {
     expect(scriptedRun(17)).toEqual(scriptedRun(17));
@@ -105,6 +110,34 @@ describe('terrain and obstacle generation', () => {
     expect(maxStep).toBeLessThan(0.5);
   });
 
+  it('joins return paths to the trail with flat benches and trail grip', () => {
+    const terrain = createTerrain(17);
+    expect(terrain.returnPaths.length).toBeGreaterThan(0);
+    for (const path of terrain.returnPaths) {
+      const joinS = path.s0 + path.L - 0.5;
+      const joinZ = -joinS;
+      const joinX =
+        terrain.centerX(joinZ) +
+        path.side * (terrain.halfWidth(joinZ) + 0.5);
+      expect(terrain.pathWeightAt(joinX, joinZ)).toBeGreaterThan(0.5);
+
+      const s = path.s0 + path.L / 2;
+      const z = -s;
+      const hw = terrain.halfWidth(z);
+      const offset = returnPathOffset(path, s);
+      const center = terrain.centerX(z) + path.side * (hw + offset);
+      const inner = center - path.side * 0.8;
+      const outer = center + path.side * 0.8;
+      expect(Math.abs(terrain.heightAt(inner, z) - terrain.heightAt(outer, z))).toBeLessThan(
+        0.05,
+      );
+
+      const surface = terrain.surfaceAt(center, z);
+      expect(surface.crr).toBe(CRR_TRAIL);
+      expect(surface.mu).toBe(MU_TRAIL);
+    }
+  });
+
   it('blends off-trail surface properties across a shoulder before the boundary', () => {
     const terrain = createTerrain(17);
     for (const z of [-60, -300, -600, -850]) {
@@ -130,6 +163,19 @@ describe('terrain and obstacle generation', () => {
         previousCrr = crr;
       }
     }
+  });
+
+  it('only crashes for crossing the expanded 24m boundary', () => {
+    const terrain = createTerrain(17);
+    const z = -60;
+    const edge = terrain.centerX(z) + terrain.halfWidth(z);
+    const shoulderBike = createBike({ x: edge + 13, z }, terrain);
+    stepBike(shoulderBike, { throttle: 0, brake: 0, steer: 0 }, terrain, [], DT);
+    expect(shoulderBike.crashed).toBeNull();
+
+    const outsideBike = createBike({ x: edge + OUT_OF_BOUNDS + 1, z }, terrain);
+    stepBike(outsideBike, { throttle: 0, brake: 0, steer: 0 }, terrain, [], DT);
+    expect(outsideBike.crashed).toBe('off course');
   });
 
   it('places obstacles in order with trail exclusion zones and clear edge gaps', () => {
@@ -181,7 +227,37 @@ describe('terrain and obstacle generation', () => {
       const offset = Math.abs(tree.x - terrain.centerX(tree.z));
       const width = terrain.halfWidth(tree.z);
       expect(offset).toBeGreaterThanOrEqual(width + 0.5);
-      expect(offset).toBeLessThanOrEqual(width + 8);
+      expect(offset).toBeLessThanOrEqual(width + 22);
+    }
+  });
+
+  it('keeps the outer tree band clear of return paths', () => {
+    const terrain = createTerrain(17);
+    const trees = createObstacles(terrain, 27).filter((obstacle) => {
+      if (obstacle.type !== 'tree') return false;
+      const offset = Math.abs(obstacle.x - terrain.centerX(obstacle.z));
+      return offset - terrain.halfWidth(obstacle.z) >= 6.5;
+    });
+    expect(trees.length).toBeGreaterThan(0);
+
+    for (const tree of trees) {
+      const s = -tree.z;
+      const side = Math.sign(tree.x - terrain.centerX(tree.z));
+      expect(Math.abs(tree.x - terrain.centerX(tree.z)) - terrain.halfWidth(tree.z))
+        .toBeGreaterThanOrEqual(7);
+      expect(Math.abs(tree.x - terrain.centerX(tree.z)) - terrain.halfWidth(tree.z))
+        .toBeLessThanOrEqual(22);
+      expect(terrain.pathWeightAt(tree.x, tree.z)).toBe(0);
+
+      for (const path of terrain.returnPaths) {
+        if (path.side !== side || s < path.s0 - 10 || s > path.s0 + path.L) {
+          continue;
+        }
+        const pathX =
+          terrain.centerX(tree.z) +
+          side * (terrain.halfWidth(tree.z) + returnPathOffset(path, s));
+        expect(Math.abs(tree.x - pathX)).toBeGreaterThanOrEqual(3);
+      }
     }
   });
 
