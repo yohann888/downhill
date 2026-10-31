@@ -4,13 +4,24 @@ import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.j
 
 const loader = new GLTFLoader();
 loader.setMeshoptDecoder(MeshoptDecoder);
+const modelCache = new Map();
+
+export async function loadModel(name) {
+  if (!modelCache.has(name)) {
+    modelCache.set(name, loader.loadAsync(`./assets/models/${name}.glb`).catch((error) => {
+      modelCache.delete(name);
+      throw error;
+    }));
+  }
+  return modelCache.get(name);
+}
 
 export async function loadModels(names) {
   const debug = new URLSearchParams(window.location.search).has('debug');
   const entries = await Promise.all(
     names.map(async (name) => {
       try {
-        const gltf = await loader.loadAsync(`./assets/models/${name}.glb`);
+        const gltf = await loadModel(name);
         return [name, gltf];
       } catch (error) {
         if (debug) {

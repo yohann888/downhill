@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Rider asset preview</title>
+  <style>
+    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #101824; }
+    canvas { display: block; width: 100%; height: 100%; }
+    #label { position: fixed; left: 12px; top: 12px; color: white; font: 14px sans-serif; }
+  </style>
+  <script type="importmap">
+    { "imports": { "three": "../../node_modules/three/build/three.module.js" } }
+  </script>
+</head>
+<body>
+  <div id="label"></div>
+  <script type="module">
+    import * as THREE from '../../node_modules/three/build/three.module.js';
+    import { GLTFLoader } from '../../node_modules/three/examples/jsm/loaders/GLTFLoader.js';
+
+    const query = new URLSearchParams(location.search);
+    const name = query.get('name') || 'rider-red';
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x172331);
+    const camera = new THREE.PerspectiveCamera(35, innerWidth / innerHeight, 0.01, 100);
+    const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.setPixelRatio(1);
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.15;
+    document.body.append(renderer.domElement);
+    scene.add(new THREE.HemisphereLight(0xe6f4ff, 0x263248, 2.2));
+    const key = new THREE.DirectionalLight(0xffe4c4, 3.2);
+    key.position.set(-3, 5, 4);
+    scene.add(key);
+    const fill = new THREE.DirectionalLight(0x66dfff, 2.2);
+    fill.position.set(3, 1, -4);
+    scene.add(fill);
+    document.querySelector('#label').textContent = name;
+
+    const loader = new GLTFLoader();
+    const source = query.get('src') || `./raw/models/${name}-rigged.glb`;
+    loader.load(source, ({ scene: root }) => {
+      root.updateMatrixWorld(true);
+      const bounds = new THREE.Box3().setFromObject(root);
+      const size = bounds.getSize(new THREE.Vector3());
+      const center = bounds.getCenter(new THREE.Vector3());
+      root.position.sub(center);
+      root.rotation.y = Math.PI;
+      scene.add(root);
+      const radius = Math.max(size.length() * 0.5, 0.4);
+      const angle = THREE.MathUtils.degToRad(Number(query.get('angle') || 140));
+      const portrait = query.get('portrait') === '1';
+      const distance = radius * (portrait ? 1.45 : 3.1);
+      const targetY = portrait ? 0.35 : 0;
+      camera.position.set(Math.sin(angle) * distance, targetY + (portrait ? 0.22 : radius * 0.5), Math.cos(angle) * distance);
+      camera.lookAt(0, targetY, 0);
+      if (query.get('print') === '1') {
+        const spine = root.getObjectByName('Spine02') || root.getObjectByName('spine2');
+        if (spine) {
+          new THREE.TextureLoader().load('./../../public/assets/otter-back.png', (texture) => {
+            texture.colorSpace = THREE.SRGBColorSpace;
+            const width = 0.22;
+            const badge = new THREE.Mesh(
+              new THREE.PlaneGeometry(width, width * 467 / 512),
+              new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false, depthTest: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2 }),
+            );
+            root.updateMatrixWorld(true);
+            const backDirection = new THREE.Vector3(0, 0, -1)
+              .applyQuaternion(root.getWorldQuaternion(new THREE.Quaternion()))
+              .normalize();
+            const printWorldPosition = spine.getWorldPosition(new THREE.Vector3())
+              .addScaledVector(backDirection, 0.2);
+            printWorldPosition.y += 0.04;
+            const printWorldRotation = new THREE.Quaternion()
+              .setFromUnitVectors(new THREE.Vector3(0, 0, 1), backDirection);
+            const spineScale = spine.getWorldScale(new THREE.Vector3());
+            badge.position.copy(spine.worldToLocal(printWorldPosition));
+            badge.scale.set(1 / Math.abs(spineScale.x), 1 / Math.abs(spineScale.y), 1 / Math.abs(spineScale.z));
+            badge.quaternion.copy(
+              spine.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(printWorldRotation),
+            );
+            spine.add(badge);
+            renderer.render(scene, camera);
+            document.body.dataset.print = 'true';
+            document.body.dataset.printPosition = badge.getWorldPosition(new THREE.Vector3()).toArray().join(',');
+            document.body.dataset.spineScale = spine.getWorldScale(new THREE.Vector3()).toArray().join(',');
+          });
+        }
+      }
+      root.updateMatrixWorld(true);
+      renderer.render(scene, camera);
+      document.body.dataset.ready = 'true';
+      document.body.dataset.bounds = size.toArray().join(',');
+    }, undefined, (error) => {
+      document.body.dataset.error = String(error);
+      document.querySelector('#label').textContent = String(error);
+    });
+  </script>
+</body>
+</html>

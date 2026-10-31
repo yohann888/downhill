@@ -310,7 +310,7 @@ export function createRiderModel() {
   let wavePoseActive = false;
   let wavePoseTime = 0;
 
-  function setAssets({ riderBody, bikeFrame, bikeWheel } = {}) {
+  function setAssets({ riderBody, bikeFrame, bikeWheel, backPrint } = {}) {
     const failAssetSetup = (reason, details = {}) => {
       assetHolder.clear();
       assetHolder.visible = false;
@@ -430,6 +430,40 @@ export function createRiderModel() {
     if (required.some((bone) => !bone)) {
       const missing = Object.entries(bones).filter(([, bone]) => !bone).map(([name]) => name);
       return failAssetSetup(`Missing rider bones: ${missing.join(', ')}`, { diagnostics });
+    }
+    if (backPrint) {
+      backPrint.colorSpace = THREE.SRGBColorSpace;
+      const spineScale = bones.spine2.getWorldScale(new THREE.Vector3());
+      const imageWidth = backPrint.image?.width || 1;
+      const imageHeight = backPrint.image?.height || 1;
+      const print = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.22, 0.22 * imageHeight / imageWidth),
+        new THREE.MeshBasicMaterial({
+          map: backPrint,
+          transparent: true,
+          depthWrite: false,
+          depthTest: false,
+          side: THREE.DoubleSide,
+          polygonOffset: true,
+          polygonOffsetFactor: -2,
+          polygonOffsetUnits: -2,
+          toneMapped: false,
+        }),
+      );
+      const riderRotation = riderRoot.getWorldQuaternion(new THREE.Quaternion());
+      const backDirection = new THREE.Vector3(0, 0, -1).applyQuaternion(riderRotation).normalize();
+      const printWorldPosition = boneWorldPosition(bones.spine2)
+        .addScaledVector(backDirection, 0.2);
+      printWorldPosition.y += 0.04;
+      print.position.copy(bones.spine2.worldToLocal(printWorldPosition));
+      print.scale.set(1 / Math.abs(spineScale.x), 1 / Math.abs(spineScale.y), 1 / Math.abs(spineScale.z));
+      const printWorldRotation = new THREE.Quaternion()
+        .setFromUnitVectors(new THREE.Vector3(0, 0, 1), backDirection);
+      print.quaternion.copy(
+        bones.spine2.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(printWorldRotation),
+      );
+      print.renderOrder = 2;
+      bones.spine2.add(print);
     }
 
     const leftShoulder = boneWorldPosition(bones.leftShoulder);
