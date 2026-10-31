@@ -173,9 +173,15 @@ export function createAudio() {
     get music() {
       return MUSIC_TRACKS.find((track) => track.id === selectedMusic);
     },
+    tracks: MUSIC_TRACKS,
     nextMusic() {
       const index = MUSIC_TRACKS.findIndex((track) => track.id === selectedMusic);
-      selectedMusic = MUSIC_TRACKS[(index + 1) % MUSIC_TRACKS.length].id;
+      return this.setMusic(MUSIC_TRACKS[(index + 1) % MUSIC_TRACKS.length].id);
+    },
+    setMusic(id) {
+      if (!MUSIC_TRACKS.some((track) => track.id === id)) return this.music;
+      if (id === selectedMusic) return this.music;
+      selectedMusic = id;
       localStorage.setItem('downhill.music', selectedMusic);
       musicSelectionVersion += 1;
       if (ctx) void switchMusic(selectedMusic, musicSelectionVersion);

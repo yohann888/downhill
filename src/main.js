@@ -94,7 +94,26 @@ const ui = {
   volume: document.getElementById('volume'),
 };
 ui.mute.textContent = audio.muted ? 'Sound off' : 'Sound on';
-ui.music.textContent = `Music: ${audio.music.label}`;
+const menuMusic = document.getElementById('menu-music');
+function syncMusicUi() {
+  ui.music.textContent = `Music: ${audio.music.label}`;
+  for (const button of menuMusic.querySelectorAll('button')) {
+    button.setAttribute('aria-pressed', String(button.dataset.track === audio.music.id));
+  }
+}
+for (const track of audio.tracks) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.dataset.track = track.id;
+  button.textContent = track.label;
+  button.addEventListener('click', () => {
+    audio.setMusic(track.id);
+    syncMusicUi();
+    button.blur();
+  });
+  menuMusic.append(button);
+}
+syncMusicUi();
 ui.timeToggle.textContent = timeMode === 'night' ? 'Night' : 'Day';
 for (const checkpoint of terrain.checkpoints) {
   const mark = document.createElement('span');
@@ -105,7 +124,8 @@ for (const checkpoint of terrain.checkpoints) {
 }
 ui.mute.addEventListener('click', () => { ui.mute.textContent = audio.toggleMute() ? 'Sound off' : 'Sound on'; ui.mute.blur(); });
 ui.music.addEventListener('click', () => {
-  ui.music.textContent = `Music: ${audio.nextMusic().label}`;
+  audio.nextMusic();
+  syncMusicUi();
   ui.music.blur();
 });
 function setTimeMode(mode, persist = true) {

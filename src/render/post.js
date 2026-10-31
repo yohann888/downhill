@@ -27,6 +27,7 @@ const GradeShader = {
       c = mix(vec3(l), c, saturation);
       c = (c - 0.5) * contrast + 0.5;
       c += vec3(warmth, warmth * 0.4, -warmth);
+      c += (1.0 - l) * vec3(0.02, -0.004, 0.034) + l * vec3(0.024, 0.01, -0.014);
       vec2 d = vUv - 0.5;
       c *= 1.0 - vignette * smoothstep(0.25, 0.85, dot(d, d) * 2.2);
       gl_FragColor = vec4(clamp(c, 0.0, 1.0), 1.0);
