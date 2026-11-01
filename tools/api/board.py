@@ -108,12 +108,17 @@ def _check_ghost_path(frames: Sequence[Sequence[float]]) -> None:
         raise ValueError("ghost must start at the course start")
     if frames[-1][2] > FINISH_Z + FINISH_SLACK:
         raise ValueError("ghost must reach the finish")
+    furthest_z = first[2]
     for previous, current in zip(frames, frames[1:]):
         if (
             previous[2] - current[2] > MAX_FORWARD_STEP + 1e-9
-            and not _near_checkpoint(current)
+            and (
+                not _near_checkpoint(current)
+                or current[2] < furthest_z - RESPAWN_RADIUS
+            )
         ):
             raise ValueError("ghost moves faster than the bike can")
+        furthest_z = min(furthest_z, current[2])
 
 
 def validate_run(body: Mapping[str, Any]) -> dict[str, Any]:

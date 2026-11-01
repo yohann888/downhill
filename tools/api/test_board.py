@@ -37,20 +37,20 @@ def _path(count, *, start_z=-6, finish_z=-901):
     ]
 
 
+def _extend_frames_to_z(frames, target_z):
+    start_z = frames[-1][2]
+    count = math.ceil(abs(target_z - start_z) / 0.5)
+    for step in range(1, count + 1):
+        z = start_z + (target_z - start_z) * step / count
+        frames.append([_course_center_x(z), 0, z, 0, 0])
+
+
 def _backtrack_respawn_frames(respawn_z, respawn_x, *, backtrack_z=-130):
     frames = [[_course_center_x(-6), 0, -6, 0, 0]]
-
-    def extend_to(target_z):
-        start_z = frames[-1][2]
-        count = math.ceil(abs(target_z - start_z) / 0.5)
-        for step in range(1, count + 1):
-            z = start_z + (target_z - start_z) * step / count
-            frames.append([_course_center_x(z), 0, z, 0, 0])
-
-    extend_to(-150)
-    extend_to(backtrack_z)
+    _extend_frames_to_z(frames, -150)
+    _extend_frames_to_z(frames, backtrack_z)
     frames.append([respawn_x, 0, respawn_z, 0, 0])
-    extend_to(-901)
+    _extend_frames_to_z(frames, -901)
     return frames
 
 
@@ -228,6 +228,33 @@ def test_validate_run_rejects_forward_respawn_far_from_checkpoint():
     )
 
     with pytest.raises(ValueError, match="ghost moves faster than the bike"):
+        validate_run(valid_run(
+            time=len(frames) * 0.1,
+            penalties=0,
+            ghost={"dt": 0.1, "frames": frames},
+        ))
+
+
+def test_validate_run_rejects_jump_from_start_to_finish_checkpoint():
+    start = [_course_center_x(-6), 0, -6, 0, 0]
+    frames = [start.copy() for _ in range(250)]
+    frames.append([_course_center_x(-900), 0, -900, 0, 0])
+
+    with pytest.raises(ValueError, match="ghost moves faster than the bike can"):
+        validate_run(valid_run(
+            time=len(frames) * 0.1,
+            penalties=0,
+            ghost={"dt": 0.1, "frames": frames},
+        ))
+
+
+def test_validate_run_rejects_jump_to_unreached_checkpoint():
+    frames = [[_course_center_x(-6), 0, -6, 0, 0]]
+    _extend_frames_to_z(frames, -140)
+    frames.append([_course_center_x(-300), 0, -300, 0, 0])
+    _extend_frames_to_z(frames, -901)
+
+    with pytest.raises(ValueError, match="ghost moves faster than the bike can"):
         validate_run(valid_run(
             time=len(frames) * 0.1,
             penalties=0,
