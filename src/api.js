@@ -1,6 +1,7 @@
 export const API_BASE = import.meta.env.VITE_API_BASE || '';
 
 function baseUrl() {
+  if (!import.meta.env.DEV) return API_BASE;
   const params = new URLSearchParams(window.location.search);
   return params.has('api') ? params.get('api') : API_BASE;
 }

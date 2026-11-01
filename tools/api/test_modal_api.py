@@ -1,14 +1,36 @@
 import asyncio
 import json
+from pathlib import Path
 
+import pytest
+from fastapi import HTTPException
 from starlette.requests import Request
 
 import modal_api
+from board import _course_center_x
 
 
 class MemoryBoard(dict):
-    def put(self, key, value):
+    def put(self, key, value, skip_if_exists=False):
+        if skip_if_exists and key in self:
+            return False
         self[key] = value
+        return True
+
+
+def _path(count, *, start_z=-6, finish_z=-901):
+    start_x = _course_center_x(start_z)
+    finish_x = _course_center_x(finish_z)
+    return [
+        [
+            start_x + (finish_x - start_x) * index / (count - 1),
+            0,
+            start_z + (finish_z - start_z) * index / (count - 1),
+            0,
+            0,
+        ]
+        for index in range(count)
+    ]
 
 
 def _entry(index):
@@ -22,22 +44,64 @@ def _entry(index):
     }
 
 
-def _request(body):
+def _request(body, *, path="/run", headers=None, client=("127.0.0.1", 1234)):
     payload = json.dumps(body).encode()
 
     async def receive():
         return {"type": "http.request", "body": payload, "more_body": False}
 
+    request_headers = {"x-forwarded-for": "192.0.2.1"}
+    request_headers.update(headers or {})
     return Request(
         {
             "type": "http",
             "method": "POST",
-            "path": "/run",
-            "headers": [(b"x-forwarded-for", b"192.0.2.1")],
-            "client": ("127.0.0.1", 1234),
+            "path": path,
+            "headers": [(key.lower().encode(), value.encode()) for key, value in request_headers.items()],
+            "client": client,
         },
         receive,
     )
+
+
+def _run_payload(time=30):
+    return {
+        "name": "AAA",
+        "time": time,
+        "penalties": 0,
+        "bonus": 0,
+        "topSpeed": 42,
+        "crashes": 0,
+        "otterHits": 0,
+        "maxAir": 0,
+        "ghost": {"dt": 0.1, "frames": _path(round(time * 10))},
+    }
+
+
+def _commentary_payload(**overrides):
+    return {
+        "name": "AAA",
+        "time": 30.5,
+        "penalties": 0.5,
+        "bonus": 1.2,
+        "topSpeed": 42,
+        "crashes": 0,
+        "otterHits": 1,
+        "maxAir": 3.5,
+        "rank": None,
+        **overrides,
+    }
+
+
+def _stub_commentary(monkeypatch):
+    async def commentary_text(stats):
+        return "Nice run"
+
+    async def commentary_audio(text, ip):
+        return None
+
+    monkeypatch.setattr(modal_api, "_commentary_text", commentary_text)
+    monkeypatch.setattr(modal_api, "_commentary_audio", commentary_audio)
 
 
 def test_get_leaderboard_returns_up_to_top_size(monkeypatch):
@@ -55,17 +119,7 @@ def test_post_run_returns_top_size(monkeypatch):
     board = MemoryBoard()
     board[modal_api.TOP_KEY] = [_entry(index) for index in range(50)]
     monkeypatch.setattr(modal_api, "board", board)
-    run = {
-        "name": "new",
-        "time": 30,
-        "penalties": 0,
-        "bonus": 0,
-        "topSpeed": 42,
-        "crashes": 0,
-        "otterHits": 0,
-        "maxAir": 0,
-        "ghost": {"dt": 0.1, "frames": [[0, 0, 0, 0, 0] for _ in range(300)]},
-    }
+    run = {**_run_payload(), "name": "new"}
 
     result = asyncio.run(modal_api.post_run(_request(run)))
 
@@ -93,3 +147,308 @@ def test_get_leaderboard_clips_legacy_names_without_mutating_storage(monkeypatch
     assert result["ghost"]["name"] == "LON"
     assert board[modal_api.TOP_KEY][0]["name"] == "Long Legacy Name"
     assert board[modal_api.BEST_GHOST_KEY]["name"] == "Long Ghost Name"
+
+
+def test_get_leaderboard_serves_legacy_records_without_mutating_storage(monkeypatch):
+    board = MemoryBoard()
+    legacy_entries = [
+        {
+            "name": "legacy lower-case long name",
+            "time": 40,
+            "penalties": 1,
+            "topSpeed": 30,
+            "ts": 1,
+        }
+    ]
+    legacy_ghost = {
+        "name": "legacy",
+        "dt": 20.0,
+        "frames": [[0, 0, 0, 0, 0]],
+    }
+    board[modal_api.TOP_KEY] = legacy_entries
+    board[modal_api.BEST_GHOST_KEY] = legacy_ghost
+    monkeypatch.setattr(modal_api, "board", board)
+
+    result = asyncio.run(modal_api.get_leaderboard())
+
+    assert result["top"][0]["name"] == "LEG"
+    assert result["ghost"]["name"] == "LEG"
+    assert result["ghost"]["dt"] == 20.0
+    assert result["ghost"]["frames"] == [[0, 0, 0, 0, 0]]
+    assert board[modal_api.TOP_KEY] == legacy_entries
+    assert board[modal_api.BEST_GHOST_KEY] == legacy_ghost
+
+
+def test_post_run_accepts_real_fixture_with_legacy_entries(monkeypatch):
+    fixture_path = Path(__file__).parent / "fixtures" / "real_client_run.json"
+    with fixture_path.open() as fixture_file:
+        run = json.load(fixture_file)
+    board = MemoryBoard()
+    board[modal_api.TOP_KEY] = [{
+        "name": "legacy",
+        "time": 60,
+        "penalties": 0,
+        "topSpeed": 30,
+        "ts": 1,
+    }]
+    monkeypatch.setattr(modal_api, "board", board)
+
+    result = asyncio.run(modal_api.post_run(_request(run)))
+
+    assert result["rank"] == 1
+    assert result["top"][0]["name"] == "YO"
+    assert board[modal_api.BEST_GHOST_KEY] == {
+        "name": "YO",
+        "time": run["time"],
+        "dt": run["ghost"]["dt"],
+        "frames": run["ghost"]["frames"],
+    }
+
+
+@pytest.mark.parametrize(
+    ("client", "expected"),
+    [
+        (("192.0.2.8", 1234), "192.0.2.8"),
+        (("::ffff:192.0.2.8", 1234), "192.0.2.8"),
+        (("2001:db8:1234:5678::1", 1234), "2001:db8:1234:5678::/64"),
+        (("not-an-ip", 1234), "unknown"),
+        (None, "unknown"),
+    ],
+)
+def test_client_ip_normalizes_request_client_only(client, expected):
+    request = _request({}, client=client, headers={"x-forwarded-for": "203.0.113.77"})
+
+    assert modal_api._client_ip(request) == expected
+
+
+def test_client_ip_maps_ipv6_addresses_in_the_same_64_to_one_bucket():
+    first = _request({}, client=("2001:db8:1234:5678::1", 1234))
+    second = _request({}, client=("2001:db8:1234:5678:ffff::2", 1234))
+
+    assert modal_api._client_ip(first) == modal_api._client_ip(second)
+
+
+def test_post_run_limits_client_ip_ignoring_forwarded_headers(monkeypatch):
+    board = MemoryBoard()
+    monkeypatch.setattr(modal_api, "board", board)
+
+    for index in range(30):
+        asyncio.run(modal_api.post_run(_request(
+            _run_payload(30 + index * 0.02),
+            headers={"x-forwarded-for": f"192.0.2.{index + 1}"},
+            client=("198.51.100.5", 1234),
+        )))
+
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(modal_api.post_run(_request(
+            _run_payload(30.6),
+            headers={"x-forwarded-for": "203.0.113.99"},
+            client=("198.51.100.5", 1234),
+        )))
+    assert error.value.status_code == 429
+    assert error.value.detail == "Run limit reached"
+
+
+def test_post_run_enforces_global_limit(monkeypatch):
+    monkeypatch.setattr(modal_api, "board", MemoryBoard())
+    monkeypatch.setattr(modal_api, "RUNS_GLOBAL_HOUR", 2)
+
+    for index in range(2):
+        asyncio.run(modal_api.post_run(_request(
+            _run_payload(30 + index),
+            client=(f"198.51.100.{index + 1}", 1234),
+        )))
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(modal_api.post_run(_request(
+            _run_payload(32),
+            client=("198.51.100.3", 1234),
+        )))
+    assert error.value.status_code == 429
+
+
+def test_duplicate_run_does_not_consume_another_slot(monkeypatch):
+    monkeypatch.setattr(modal_api, "board", MemoryBoard())
+    monkeypatch.setattr(modal_api, "RUNS_PER_IP_HOUR", 1)
+    run = _run_payload()
+
+    asyncio.run(modal_api.post_run(_request(run)))
+    duplicate_result = asyncio.run(modal_api.post_run(_request(run)))
+    assert duplicate_result["rank"] == 1
+
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(modal_api.post_run(_request(_run_payload(31))))
+    assert error.value.status_code == 429
+
+
+def test_commentary_audio_is_optional_without_elevenlabs_key(monkeypatch):
+    monkeypatch.delenv("ELEVENLABS_API_KEY", raising=False)
+    monkeypatch.setattr(modal_api, "board", MemoryBoard())
+
+    result = asyncio.run(modal_api._commentary_audio("Nice run", "192.0.2.1"))
+
+    assert result is None
+
+
+@pytest.mark.parametrize("has_content_length", [False, True])
+def test_commentary_rejects_oversized_body_without_httpx(monkeypatch, has_content_length):
+    calls = []
+
+    class UnexpectedClient:
+        def __init__(self, *args, **kwargs):
+            calls.append(True)
+            raise AssertionError("httpx client must not be constructed")
+
+    monkeypatch.setattr(modal_api.httpx, "AsyncClient", UnexpectedClient)
+    payload = _commentary_payload(time="x" * 1_000_000)
+    headers = {"content-length": "1000000"} if has_content_length else None
+    request = _request(payload, path="/commentary", headers=headers)
+
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(modal_api.post_commentary(request))
+    assert error.value.status_code == 413
+    assert calls == []
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        _commentary_payload(time="30.5"),
+        _commentary_payload(crashes=True),
+    ],
+)
+def test_commentary_rejects_invalid_stats_without_httpx(monkeypatch, payload):
+    calls = []
+
+    class UnexpectedClient:
+        def __init__(self, *args, **kwargs):
+            calls.append(True)
+            raise AssertionError("httpx client must not be constructed")
+
+    monkeypatch.setattr(modal_api.httpx, "AsyncClient", UnexpectedClient)
+
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(modal_api.post_commentary(_request(payload, path="/commentary")))
+    assert error.value.status_code == 400
+    assert error.value.detail == "Invalid commentary request"
+    assert calls == []
+
+
+def test_commentary_accepts_the_client_payload_and_returns_text(monkeypatch):
+    monkeypatch.setattr(modal_api, "board", MemoryBoard())
+    _stub_commentary(monkeypatch)
+
+    result = asyncio.run(modal_api.post_commentary(
+        _request(_commentary_payload(), path="/commentary")
+    ))
+
+    assert result == {"text": "Nice run", "audio": None}
+
+
+def test_commentary_enforces_per_client_limit(monkeypatch):
+    monkeypatch.setattr(modal_api, "board", MemoryBoard())
+    monkeypatch.setattr(modal_api, "COMMENTARY_PER_IP_HOUR", 2)
+    _stub_commentary(monkeypatch)
+    request = lambda: _request(_commentary_payload(), path="/commentary")
+
+    for _ in range(2):
+        asyncio.run(modal_api.post_commentary(request()))
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(modal_api.post_commentary(request()))
+    assert error.value.status_code == 429
+    assert error.value.detail == "Commentary limit reached"
+
+
+def test_commentary_enforces_global_gemini_limit(monkeypatch):
+    monkeypatch.setattr(modal_api, "board", MemoryBoard())
+    monkeypatch.setattr(modal_api, "COMMENTARY_GLOBAL_DAY", 2)
+    _stub_commentary(monkeypatch)
+
+    for index in range(2):
+        asyncio.run(modal_api.post_commentary(_request(
+            _commentary_payload(),
+            path="/commentary",
+            client=(f"198.51.100.{index + 1}", 1234),
+        )))
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(modal_api.post_commentary(_request(
+            _commentary_payload(),
+            path="/commentary",
+            client=("198.51.100.3", 1234),
+        )))
+    assert error.value.status_code == 429
+
+
+class _TTSResponse:
+    content = b"audio"
+
+    def raise_for_status(self):
+        pass
+
+
+def _stub_tts_client(monkeypatch):
+    calls = []
+
+    class TTSClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        async def post(self, *args, **kwargs):
+            calls.append(True)
+            return _TTSResponse()
+
+    monkeypatch.setattr(modal_api.httpx, "AsyncClient", TTSClient)
+    return calls
+
+
+def test_tts_enforces_global_daily_limit_across_clients(monkeypatch):
+    monkeypatch.setenv("ELEVENLABS_API_KEY", "test-key")
+    monkeypatch.setattr(modal_api, "ELEVENLABS_VOICE_ID", "voice")
+    monkeypatch.setattr(modal_api, "board", MemoryBoard())
+    calls = _stub_tts_client(monkeypatch)
+
+    async def make_requests():
+        for index in range(81):
+            await modal_api._commentary_audio("Nice run", f"192.0.2.{index + 1}")
+
+    asyncio.run(make_requests())
+
+    assert len(calls) == modal_api.TTS_GLOBAL_DAY
+
+
+def test_tts_enforces_per_client_daily_limit(monkeypatch):
+    monkeypatch.setenv("ELEVENLABS_API_KEY", "test-key")
+    monkeypatch.setattr(modal_api, "ELEVENLABS_VOICE_ID", "voice")
+    monkeypatch.setattr(modal_api, "board", MemoryBoard())
+    calls = _stub_tts_client(monkeypatch)
+
+    async def make_requests():
+        for _ in range(modal_api.TTS_PER_IP_DAY + 5):
+            await modal_api._commentary_audio("Nice run", "192.0.2.1")
+
+    asyncio.run(make_requests())
+
+    assert len(calls) == modal_api.TTS_PER_IP_DAY
+
+
+def test_tts_concurrent_calls_respect_per_client_limit(monkeypatch):
+    monkeypatch.setenv("ELEVENLABS_API_KEY", "test-key")
+    monkeypatch.setattr(modal_api, "ELEVENLABS_VOICE_ID", "voice")
+    monkeypatch.setattr(modal_api, "TTS_PER_IP_DAY", 5)
+    monkeypatch.setattr(modal_api, "board", MemoryBoard())
+    calls = _stub_tts_client(monkeypatch)
+
+    async def make_requests():
+        await asyncio.gather(*[
+            modal_api._commentary_audio("Nice run", "192.0.2.1")
+            for _ in range(30)
+        ])
+
+    asyncio.run(make_requests())
+
+    assert len(calls) <= 5
