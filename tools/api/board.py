@@ -9,8 +9,27 @@ from typing import Any
 MAX_FRAMES = 6000
 TOP_SIZE = 50
 RUNS_PER_IP_HOUR = 30
+GHOST_DT = 0.1
+START_Z = -6.0
+START_RADIUS = 5.0
+FINISH_Z = -900.0
+FINISH_SLACK = 10.0
+MAX_FORWARD_STEP = 5.0
+RUNS_GLOBAL_HOUR = 1000
+COMMENTARY_PER_IP_HOUR = 120
+COMMENTARY_GLOBAL_DAY = 5000
+TTS_PER_IP_DAY = 20
+TTS_GLOBAL_DAY = 80
 _NAME_PATTERN = re.compile(r"[A-Z0-9]{1,3}\Z")
 _RUN_NUMBER_FIELDS = ("time", "penalties", "bonus", "topSpeed", "crashes", "otterHits", "maxAir")
+
+
+def _course_center_x(z: float) -> float:
+    return (
+        18 * math.sin(z / 90)
+        + 9 * math.sin(z / 37 + 1.3)
+        + 4 * math.sin(z / 17 + 0.4)
+    )
 
 
 def _finite_number(value: Any, field: str) -> float:
@@ -42,8 +61,8 @@ def quantize_ghost(ghost: Mapping[str, Any]) -> dict[str, Any]:
     if not isinstance(ghost, Mapping):
         raise ValueError("ghost must be an object")
     dt = _finite_number(ghost.get("dt"), "ghost.dt")
-    if dt <= 0:
-        raise ValueError("ghost.dt must be positive")
+    if abs(dt - GHOST_DT) > 1e-9:
+        raise ValueError("ghost.dt must be 0.1")
     frames = ghost.get("frames")
     if not isinstance(frames, Sequence) or isinstance(frames, (str, bytes)):
         raise ValueError("ghost.frames must be an array")
@@ -57,7 +76,23 @@ def quantize_ghost(ghost: Mapping[str, Any]) -> dict[str, Any]:
         quantized_frames.append(
             [round(_finite_number(value, f"ghost.frames[{index}]"), 2) for value in frame]
         )
-    return {"dt": dt, "frames": quantized_frames}
+    return {"dt": GHOST_DT, "frames": quantized_frames}
+
+
+def _check_ghost_path(frames: Sequence[Sequence[float]]) -> None:
+    if not frames:
+        raise ValueError("ghost must start at the course start")
+    first = frames[0]
+    if (
+        math.hypot(first[0] - _course_center_x(START_Z), first[2] - START_Z)
+        > START_RADIUS
+    ):
+        raise ValueError("ghost must start at the course start")
+    if frames[-1][2] > FINISH_Z + FINISH_SLACK:
+        raise ValueError("ghost must reach the finish")
+    for previous, current in zip(frames, frames[1:]):
+        if previous[2] - current[2] > MAX_FORWARD_STEP + 1e-9:
+            raise ValueError("ghost moves faster than the bike can")
 
 
 def validate_run(body: Mapping[str, Any]) -> dict[str, Any]:
@@ -89,9 +124,10 @@ def validate_run(body: Mapping[str, Any]) -> dict[str, Any]:
 
     ghost = quantize_ghost(body.get("ghost"))
     expected_duration = values["time"] - values["penalties"] + values["bonus"]
-    recorded_duration = len(ghost["frames"]) * ghost["dt"]
-    if not 0.8 * expected_duration <= recorded_duration <= 1.2 * expected_duration:
-        raise ValueError("ghost duration must be within 20 percent of run time")
+    expected_frames = expected_duration / GHOST_DT
+    if abs(len(ghost["frames"]) - expected_frames) > 2 + 0.01 * expected_frames:
+        raise ValueError("ghost duration must match run time")
+    _check_ghost_path(ghost["frames"])
 
     return {
         "name": name,
@@ -141,14 +177,15 @@ def find_duplicate_rank(
     return None
 
 
-def consume_rate_limit(store: Any, ip: str, now: float) -> bool:
-    key = f"rl:{ip}:{int(now // 3600)}"
-    count = store.get(key, 0)
-    if isinstance(count, bool) or not isinstance(count, int) or count >= RUNS_PER_IP_HOUR:
-        return False
-    next_count = count + 1
-    if hasattr(store, "put"):
-        store.put(key, next_count)
-    else:
-        store[key] = next_count
-    return True
+def consume_slot(store: Any, key: str, limit: int) -> bool:
+    hint = store.get(f"{key}:n", 0)
+    start = (
+        hint
+        if isinstance(hint, int) and not isinstance(hint, bool) and 0 <= hint <= limit
+        else 0
+    )
+    for slot in range(start, limit):
+        if store.put(f"{key}:{slot}", 1, skip_if_exists=True):
+            store.put(f"{key}:n", slot + 1)
+            return True
+    return False

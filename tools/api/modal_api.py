@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import ipaddress
 import json
 import os
 import re
@@ -12,8 +13,21 @@ import httpx
 import modal
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, ConfigDict, Field, StrictFloat, StrictInt, ValidationError
 
-from board import TOP_SIZE, consume_rate_limit, find_duplicate_rank, insert_top, validate_run
+from board import (
+    COMMENTARY_GLOBAL_DAY,
+    COMMENTARY_PER_IP_HOUR,
+    RUNS_GLOBAL_HOUR,
+    RUNS_PER_IP_HOUR,
+    TOP_SIZE,
+    TTS_GLOBAL_DAY,
+    TTS_PER_IP_DAY,
+    consume_slot,
+    find_duplicate_rank,
+    insert_top,
+    validate_run,
+)
 
 
 COMMENTATOR_PROMPT = """You are Otto, a sarcastic but loving otter who sits in the middle of a downhill mountain bike trail with a laptop and does live race commentary.
@@ -29,12 +43,25 @@ Rules:
 ELEVENLABS_VOICE_ID = "TX3LPaxmHKxFdv7VOQHJ"
 TOP_KEY = "top:v2"
 BEST_GHOST_KEY = "ghost:best:v2"
-DAILY_TTS_LIMIT = 80
+COMMENTARY_FIELDS = ("time", "penalties", "bonus", "topSpeed", "crashes", "otterHits", "maxAir", "rank")
+
+
+class CommentaryStats(BaseModel):
+    model_config = ConfigDict(extra="ignore", allow_inf_nan=False)
+
+    time: StrictFloat | StrictInt | None = Field(default=None, ge=-1e6, le=1e6)
+    penalties: StrictFloat | StrictInt | None = Field(default=None, ge=-1e6, le=1e6)
+    bonus: StrictFloat | StrictInt | None = Field(default=None, ge=-1e6, le=1e6)
+    topSpeed: StrictFloat | StrictInt | None = Field(default=None, ge=-1e6, le=1e6)
+    crashes: StrictFloat | StrictInt | None = Field(default=None, ge=-1e6, le=1e6)
+    otterHits: StrictFloat | StrictInt | None = Field(default=None, ge=-1e6, le=1e6)
+    maxAir: StrictFloat | StrictInt | None = Field(default=None, ge=-1e6, le=1e6)
+    rank: StrictInt | None = Field(default=None, ge=1, le=10000)
 
 app = modal.App("downhill-api")
 board = modal.Dict.from_name("downhill-board", create_if_missing=True)
 api_secret = modal.Secret.from_name("downhill-api")
-image = modal.Image.debian_slim(python_version="3.12").pip_install("fastapi", "httpx").add_local_python_source("board")
+image = modal.Image.debian_slim(python_version="3.12").pip_install("fastapi", "httpx", "pydantic").add_local_python_source("board")
 web = FastAPI()
 web.add_middleware(
     CORSMiddleware,
@@ -57,6 +84,20 @@ def _public_run(item: dict[str, Any]) -> dict[str, Any]:
         "topSpeed": item["topSpeed"],
         "ts": item["ts"],
     }
+
+
+def _client_ip(request: Request) -> str:
+    client_host = request.client.host if request.client else None
+    try:
+        address = ipaddress.ip_address(client_host)
+    except ValueError:
+        return "unknown"
+    if isinstance(address, ipaddress.IPv6Address):
+        if address.ipv4_mapped is not None:
+            return str(address.ipv4_mapped)
+        network = ipaddress.ip_network(f"{address}/64", strict=False)
+        return f"{network.network_address}/64"
+    return str(address)
 
 
 @web.get("/leaderboard")
@@ -87,12 +128,14 @@ async def post_run(request: Request) -> dict[str, Any]:
     existing = _top_entries()
     duplicate = find_duplicate_rank(existing, run) is not None
 
-    forwarded = request.headers.get("x-forwarded-for", "")
-    ip = forwarded.split(",", 1)[0].strip() if forwarded else ""
-    if not ip:
-        ip = request.client.host if request.client else "unknown"
-    if not duplicate and not consume_rate_limit(board, ip, time.time()):
-        raise HTTPException(status_code=429, detail="Run limit reached")
+    if not duplicate:
+        ip = _client_ip(request)
+        now = time.time()
+        hour = int(now // 3600)
+        if not consume_slot(board, f"rl:run:{ip}:{hour}", RUNS_PER_IP_HOUR) or not consume_slot(
+            board, f"rl:run:all:{hour}", RUNS_GLOBAL_HOUR
+        ):
+            raise HTTPException(status_code=429, detail="Run limit reached")
 
     updated, rank = insert_top(existing, run, timestamp=time.time())
     if not duplicate:
@@ -143,16 +186,15 @@ async def _commentary_text(stats: dict[str, Any]) -> str:
     return " ".join(text.split())[:160].rstrip()
 
 
-async def _commentary_audio(text: str) -> str | None:
+async def _commentary_audio(text: str, ip: str) -> str | None:
     key = os.environ.get("ELEVENLABS_API_KEY")
     if not key:
         return None
     day = datetime.now(timezone.utc).date().isoformat()
-    counter_key = f"tts:{day}"
-    count = board.get(counter_key, 0)
-    if not isinstance(count, int) or count >= DAILY_TTS_LIMIT:
+    if not consume_slot(board, f"rl:tts:{ip}:{day}", TTS_PER_IP_DAY) or not consume_slot(
+        board, f"rl:tts:{day}", TTS_GLOBAL_DAY
+    ):
         return None
-    board.put(counter_key, count + 1)
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.post(
@@ -171,16 +213,47 @@ async def _commentary_audio(text: str) -> str | None:
 
 
 @web.post("/commentary")
-async def post_commentary(body: dict[str, Any]) -> dict[str, Any]:
-    stats = {
-        key: body.get(key)
-        for key in ("time", "penalties", "bonus", "topSpeed", "crashes", "otterHits", "maxAir", "rank")
-    }
+async def post_commentary(request: Request) -> dict[str, Any]:
+    content_length = request.headers.get("content-length")
+    if content_length is not None:
+        try:
+            if int(content_length) > 4096:
+                raise HTTPException(status_code=413, detail="Request body too large")
+        except ValueError:
+            pass
+
+    body_bytes = bytearray()
+    async for chunk in request.stream():
+        body_bytes.extend(chunk)
+        if len(body_bytes) > 4096:
+            raise HTTPException(status_code=413, detail="Request body too large")
+    try:
+        body = json.loads(body_bytes)
+    except (json.JSONDecodeError, UnicodeDecodeError) as error:
+        raise HTTPException(status_code=400, detail="Invalid JSON") from error
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+    try:
+        model = CommentaryStats.model_validate(body)
+    except ValidationError as error:
+        raise HTTPException(status_code=400, detail="Invalid commentary request") from error
+
+    ip = _client_ip(request)
+    now = time.time()
+    hour = int(now // 3600)
+    day = datetime.now(timezone.utc).date().isoformat()
+    if not consume_slot(board, f"rl:cm:{ip}:{hour}", COMMENTARY_PER_IP_HOUR) or not consume_slot(
+        board, f"rl:gemini:{day}", COMMENTARY_GLOBAL_DAY
+    ):
+        raise HTTPException(status_code=429, detail="Commentary limit reached")
+
+    model_stats = model.model_dump()
+    stats = {key: model_stats[key] for key in COMMENTARY_FIELDS}
     try:
         text = await _commentary_text(stats)
     except HTTPException:
         raise
-    audio = await _commentary_audio(text)
+    audio = await _commentary_audio(text, ip)
     return {"text": text, "audio": audio}
 
 
@@ -188,8 +261,10 @@ async def post_commentary(body: dict[str, Any]) -> dict[str, Any]:
     image=image,
     secrets=[api_secret],
     min_containers=0,
+    max_containers=4,
     scaledown_window=300,
 )
+@modal.concurrent(max_inputs=20)
 @modal.asgi_app()
 def serve() -> FastAPI:
     return web
