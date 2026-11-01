@@ -19,11 +19,13 @@ export function getMusicGainTarget(target, { muted, selectedMusic, youtubePlayin
 
 export function createAudio() {
   let ctx = null;
+  let unlockReady = null;
   let wantRunning = true;
   let resumeGestureArmed = false;
   let master = null;
   let musicGain = null;
   let musicSource = null;
+  let musicSourceVersion = -1;
   let rainNodes = null;
   let rainSelected = false;
   let previousMusic = 'music-ride';
@@ -65,7 +67,7 @@ export function createAudio() {
   async function switchMusic(name, version) {
     if (name === 'youtube') return;
     const buffer = await load(name);
-    if (!buffer || !ctx || version !== musicSelectionVersion || name !== selectedMusic) return;
+    if (!buffer || !ctx || version !== musicSelectionVersion || name !== selectedMusic || musicSourceVersion === version) return;
     const now = ctx.currentTime;
     const previousSource = musicSource;
     const previousGain = musicGain;
@@ -84,6 +86,7 @@ export function createAudio() {
       previousSource.stop(now + 0.51);
     }
     musicSource = source;
+    musicSourceVersion = version;
     musicGain = gain;
     setMusicGain(voiceSource ? 0.1 : 0.25, 0.08);
   }
@@ -281,8 +284,8 @@ export function createAudio() {
     async unlock() {
       wantRunning = true;
       if (ctx) {
-        if (ctx.state !== 'running') await ctx.resume().catch(() => {});
-        return;
+        if (ctx.state !== 'running' && ctx.state !== 'closed') await ctx.resume().catch(() => {});
+        return unlockReady;
       }
       try {
         if (typeof navigator !== 'undefined' && navigator.audioSession) {
@@ -300,14 +303,17 @@ export function createAudio() {
       master.gain.value = muted ? 0 : volume;
       master.connect(ctx.destination);
       createRainNoise();
-      await Promise.all([...LOOPS, ...ONESHOTS].map(load));
-      for (const name of LOOPS) startLoop(name);
-      setLoop('forest-loop', 0.35);
-      if (!musicSource) {
-        const version = musicSelectionVersion;
-        await load(selectedMusic);
-        await switchMusic(selectedMusic, version);
-      }
+      unlockReady = (async () => {
+        await Promise.all([...LOOPS, ...ONESHOTS].map(load));
+        for (const name of LOOPS) startLoop(name);
+        setLoop('forest-loop', 0.35);
+        if (!musicSource) {
+          const version = musicSelectionVersion;
+          await load(selectedMusic);
+          await switchMusic(selectedMusic, version);
+        }
+      })();
+      return unlockReady;
     },
     async suspend() {
       wantRunning = false;
