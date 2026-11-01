@@ -210,7 +210,7 @@ def test_post_run_accepts_real_fixture_with_legacy_entries(monkeypatch):
     [
         (("192.0.2.8", 1234), "192.0.2.8"),
         (("::ffff:192.0.2.8", 1234), "192.0.2.8"),
-        (("2001:db8:1234:5678::1", 1234), "2001:db8:1234:5678::/64"),
+        (("2001:db8:1234:5678::1", 1234), "2001:db8:1234::/48"),
         (("not-an-ip", 1234), "unknown"),
         (None, "unknown"),
     ],
@@ -221,9 +221,9 @@ def test_client_ip_normalizes_request_client_only(client, expected):
     assert modal_api._client_ip(request) == expected
 
 
-def test_client_ip_maps_ipv6_addresses_in_the_same_64_to_one_bucket():
-    first = _request({}, client=("2001:db8:1234:5678::1", 1234))
-    second = _request({}, client=("2001:db8:1234:5678:ffff::2", 1234))
+def test_client_ip_maps_ipv6_addresses_in_the_same_48_to_one_bucket():
+    first = _request({}, client=("2001:db8:1234:1::1", 1234))
+    second = _request({}, client=("2001:db8:1234:ffff::1", 1234))
 
     assert modal_api._client_ip(first) == modal_api._client_ip(second)
 
@@ -232,7 +232,7 @@ def test_post_run_limits_client_ip_ignoring_forwarded_headers(monkeypatch):
     board = MemoryBoard()
     monkeypatch.setattr(modal_api, "board", board)
 
-    for index in range(30):
+    for index in range(modal_api.RUNS_PER_IP_HOUR):
         asyncio.run(modal_api.post_run(_request(
             _run_payload(30 + index * 0.02),
             headers={"x-forwarded-for": f"192.0.2.{index + 1}"},
@@ -333,6 +333,18 @@ def test_commentary_rejects_invalid_stats_without_httpx(monkeypatch, payload):
     assert calls == []
 
 
+@pytest.mark.parametrize("payload", [{}, {"time": 5}])
+def test_commentary_requires_valid_time_before_consuming_slots(monkeypatch, payload):
+    board = MemoryBoard()
+    monkeypatch.setattr(modal_api, "board", board)
+
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(modal_api.post_commentary(_request(payload, path="/commentary")))
+
+    assert error.value.status_code == 400
+    assert not any(key.startswith(("rl:cm:", "rl:gemini:")) for key in board)
+
+
 def test_commentary_accepts_the_client_payload_and_returns_text(monkeypatch):
     monkeypatch.setattr(modal_api, "board", MemoryBoard())
     _stub_commentary(monkeypatch)
@@ -356,6 +368,32 @@ def test_commentary_enforces_per_client_limit(monkeypatch):
         asyncio.run(modal_api.post_commentary(request()))
     assert error.value.status_code == 429
     assert error.value.detail == "Commentary limit reached"
+
+
+def test_commentary_limits_many_ipv6_64s_in_one_48(monkeypatch):
+    board = MemoryBoard()
+    monkeypatch.setattr(modal_api, "board", board)
+    _stub_commentary(monkeypatch)
+
+    for index in range(modal_api.COMMENTARY_PER_IP_HOUR):
+        asyncio.run(modal_api.post_commentary(_request(
+            _commentary_payload(),
+            path="/commentary",
+            client=(f"2001:db8:1234:{index:x}::1", 1234),
+        )))
+
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(modal_api.post_commentary(_request(
+            _commentary_payload(),
+            path="/commentary",
+            client=(f"2001:db8:1234:{modal_api.COMMENTARY_PER_IP_HOUR:x}::1", 1234),
+        )))
+
+    assert error.value.status_code == 429
+    assert sum(
+        value for key, value in board.items()
+        if key.startswith("rl:gemini:") and key.endswith(":n")
+    ) == modal_api.COMMENTARY_PER_IP_HOUR
 
 
 def test_commentary_enforces_global_gemini_limit(monkeypatch):
@@ -434,6 +472,34 @@ def test_tts_enforces_per_client_daily_limit(monkeypatch):
     asyncio.run(make_requests())
 
     assert len(calls) == modal_api.TTS_PER_IP_DAY
+
+
+def test_tts_limits_many_ipv6_64s_in_one_48(monkeypatch):
+    monkeypatch.setenv("ELEVENLABS_API_KEY", "test-key")
+    monkeypatch.setattr(modal_api, "ELEVENLABS_VOICE_ID", "voice")
+    monkeypatch.setattr(modal_api, "board", MemoryBoard())
+
+    async def commentary_text(stats):
+        return "Nice run"
+
+    monkeypatch.setattr(modal_api, "_commentary_text", commentary_text)
+    calls = _stub_tts_client(monkeypatch)
+    audio_clips = []
+
+    async def make_requests():
+        for index in range(modal_api.TTS_PER_IP_DAY + 5):
+            result = await modal_api.post_commentary(_request(
+                _commentary_payload(),
+                path="/commentary",
+                client=(f"2001:db8:1234:{index:x}::1", 1234),
+            ))
+            if result["audio"] is not None:
+                audio_clips.append(result["audio"])
+
+    asyncio.run(make_requests())
+
+    assert len(calls) == modal_api.TTS_PER_IP_DAY
+    assert len(audio_clips) == modal_api.TTS_PER_IP_DAY
 
 
 def test_tts_concurrent_calls_respect_per_client_limit(monkeypatch):

@@ -49,7 +49,7 @@ COMMENTARY_FIELDS = ("time", "penalties", "bonus", "topSpeed", "crashes", "otter
 class CommentaryStats(BaseModel):
     model_config = ConfigDict(extra="ignore", allow_inf_nan=False)
 
-    time: StrictFloat | StrictInt | None = Field(default=None, ge=-1e6, le=1e6)
+    time: StrictFloat | StrictInt = Field(gt=20, lt=600)
     penalties: StrictFloat | StrictInt | None = Field(default=None, ge=-1e6, le=1e6)
     bonus: StrictFloat | StrictInt | None = Field(default=None, ge=-1e6, le=1e6)
     topSpeed: StrictFloat | StrictInt | None = Field(default=None, ge=-1e6, le=1e6)
@@ -95,8 +95,8 @@ def _client_ip(request: Request) -> str:
     if isinstance(address, ipaddress.IPv6Address):
         if address.ipv4_mapped is not None:
             return str(address.ipv4_mapped)
-        network = ipaddress.ip_network(f"{address}/64", strict=False)
-        return f"{network.network_address}/64"
+        network = ipaddress.ip_network(f"{address}/48", strict=False)
+        return f"{network.network_address}/48"
     return str(address)
 
 
