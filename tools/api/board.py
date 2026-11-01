@@ -171,7 +171,7 @@ def find_duplicate_rank(
     for index, item in enumerate(existing):
         if (
             item.get("name") == run["name"]
-            and abs(float(item["time"]) - float(run["time"])) < 0.01
+            and abs(float(item["time"]) - float(run["time"])) < 1e-6
         ):
             return index + 1
     return None

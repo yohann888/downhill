@@ -7,6 +7,7 @@ import pytest
 from board import (
     _course_center_x,
     consume_slot,
+    find_duplicate_rank,
     insert_top,
     quantize_ghost,
     validate_run,
@@ -220,12 +221,22 @@ def test_insert_top_returns_existing_rank_for_duplicate_name_and_time():
 
     top, rank = insert_top(
         existing,
-        {"name": "Rider", "time": 30.0 + 0.004, "penalties": 3, "topSpeed": 50},
+        {"name": "Rider", "time": 30.0, "penalties": 3, "topSpeed": 50},
         timestamp=100,
     )
 
     assert top == existing
     assert rank == 2
+
+
+def test_find_duplicate_rank_keeps_one_tick_improvements():
+    existing = [{"name": "YO", "time": 47.3083}]
+
+    assert find_duplicate_rank(
+        existing,
+        {"name": "YO", "time": 47.3083 - 1 / 120},
+    ) is None
+    assert find_duplicate_rank(existing, {"name": "YO", "time": 47.3083}) == 1
 
 
 def test_insert_top_accepts_legacy_entries_and_names():
