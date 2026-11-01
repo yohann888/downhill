@@ -134,6 +134,9 @@ body:has(#overlay.start:not(.hidden)) #hud { z-index: 1; }
 html:has(#overlay.start:not(.hidden)), body:has(#overlay.start:not(.hidden)) { touch-action: pan-y; }
 body:has(#overlay.start:not(.hidden)) .hud-top, body:has(#overlay.start:not(.hidden)) #pickup-timers, body:has(#overlay.start:not(.hidden)) #touch, body:has(#overlay.start:not(.hidden)) #volume-label, body:has(#overlay.start:not(.hidden)) #brand-badge { visibility: hidden; }
 .arcade-presents { margin: 0 0 2px !important; font: 10px/1.6 'Press Start 2P', monospace; letter-spacing: .12em; text-transform: none; color: #22e8ff; text-shadow: 0 0 8px #22e8ff; opacity: 1 !important; }
+.arcade-presents a { color: inherit; cursor: pointer; text-decoration: none; }
+.arcade-presents a:hover { filter: brightness(1.2); text-decoration: underline; }
+.arcade-presents a:focus-visible { outline: 1px solid currentColor; outline-offset: 3px; }
 .arcade-heading { display: flex; align-items: center; justify-content: center; gap: 24px; }
 .arcade-logo { position: relative; display: inline-block; animation: arcade-bob 3.2s ease-in-out infinite; }
 .arcade-logo::before { content: 'DOWNHILL'; position: absolute; left: 0; top: 0; z-index: 0; font: clamp(34px, 10vw, 104px)/1 'Bungee', Impact, sans-serif; letter-spacing: .02em; transform: skewX(-8deg); color: #1a0638; -webkit-text-stroke: 3px #1a0638; text-shadow: 2px 2px 0 #5b1cff, 4px 4px 0 #5b1cff, 6px 6px 0 #4314c4, 8px 8px 0 #2d0c8c, 10px 10px 0 #1a0638, 12px 14px 18px rgba(0,0,0,.6); }
