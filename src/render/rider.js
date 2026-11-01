@@ -786,9 +786,9 @@ export function createRiderModel() {
       const blackWavePose = activeRiderId === 'rider-black';
       const waveTargetWorld = waving
         ? waveOriginWorld.clone()
-          .addScaledVector(waveSideWorld, waveLength * (blackWavePose ? 0.55 : 0.50))
-          .addScaledVector(waveUpWorld, waveLength * (blackWavePose ? 0.40 : 0.48))
-          .addScaledVector(waveForwardWorld, waveLength * 0.08)
+          .addScaledVector(waveSideWorld, waveLength * (blackWavePose ? 0.25 : 0.50))
+          .addScaledVector(waveUpWorld, waveLength * (blackWavePose ? -0.05 : 0.48))
+          .addScaledVector(waveForwardWorld, waveLength * (blackWavePose ? 0.40 : 0.08))
         : gripLocal;
       const waveTargetLocal = waving
         ? assetRiderMotion.worldToLocal(waveTargetWorld.clone())
@@ -807,9 +807,9 @@ export function createRiderModel() {
       const handTarget = assetRiderMotion.localToWorld(smoothedGrip);
       const elbowPole = waving
         ? waveOriginWorld.clone()
-          .addScaledVector(waveSideWorld, waveLength)
+          .addScaledVector(waveSideWorld, waveLength * (blackWavePose ? 0.40 : 1))
           .addScaledVector(waveUpWorld, -waveLength * (blackWavePose ? 1 : 0.6))
-          .addScaledVector(waveForwardWorld, waveLength * 0.05)
+          .addScaledVector(waveForwardWorld, waveLength * (blackWavePose ? 0.10 : 0.05))
         : assetRiderMotion.localToWorld(
           crashing
             ? new THREE.Vector3(side * 0.58, 0.9, 0.25)
