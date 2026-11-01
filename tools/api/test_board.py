@@ -37,6 +37,23 @@ def _path(count, *, start_z=-6, finish_z=-901):
     ]
 
 
+def _backtrack_respawn_frames(respawn_z, respawn_x, *, backtrack_z=-130):
+    frames = [[_course_center_x(-6), 0, -6, 0, 0]]
+
+    def extend_to(target_z):
+        start_z = frames[-1][2]
+        count = math.ceil(abs(target_z - start_z) / 0.5)
+        for step in range(1, count + 1):
+            z = start_z + (target_z - start_z) * step / count
+            frames.append([_course_center_x(z), 0, z, 0, 0])
+
+    extend_to(-150)
+    extend_to(backtrack_z)
+    frames.append([respawn_x, 0, respawn_z, 0, 0])
+    extend_to(-901)
+    return frames
+
+
 def valid_run(**overrides):
     run = {
         "name": "AAA",
@@ -188,6 +205,34 @@ def test_validate_run_rejects_forward_jump_but_allows_backward_respawn():
         - run["ghost"]["frames"][respawn_index - 1][2]
     )
     assert backward_step == pytest.approx(110)
+
+
+def test_validate_run_accepts_backtrack_then_checkpoint_respawn():
+    frames = _backtrack_respawn_frames(-150.4, _course_center_x(-150))
+
+    run = validate_run(valid_run(
+        time=len(frames) * 0.1,
+        penalties=0,
+        ghost={"dt": 0.1, "frames": frames},
+    ))
+
+    respawn_frame = next(frame for frame in run["ghost"]["frames"] if frame[2] == -150.4)
+    assert respawn_frame[0] == round(_course_center_x(-150), 2)
+
+
+def test_validate_run_rejects_forward_respawn_far_from_checkpoint():
+    frames = _backtrack_respawn_frames(
+        -160,
+        _course_center_x(-150),
+        backtrack_z=-139.6,
+    )
+
+    with pytest.raises(ValueError, match="ghost moves faster than the bike"):
+        validate_run(valid_run(
+            time=len(frames) * 0.1,
+            penalties=0,
+            ghost={"dt": 0.1, "frames": frames},
+        ))
 
 
 def test_quantize_ghost_rejects_oversized_and_nonfinite_frames():

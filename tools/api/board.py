@@ -13,6 +13,9 @@ GHOST_DT = 0.1
 START_Z = -6.0
 START_RADIUS = 5.0
 FINISH_Z = -900.0
+COURSE_LENGTH = -FINISH_Z
+CHECKPOINT_SPACING = 150.0
+RESPAWN_RADIUS = 3.0
 FINISH_SLACK = 10.0
 MAX_FORWARD_STEP = 5.0
 RUNS_GLOBAL_HOUR = 1000
@@ -30,6 +33,21 @@ def _course_center_x(z: float) -> float:
         + 9 * math.sin(z / 37 + 1.3)
         + 4 * math.sin(z / 17 + 0.4)
     )
+
+
+def _near_checkpoint(frame: Sequence[float]) -> bool:
+    checkpoint_z = -CHECKPOINT_SPACING
+    while checkpoint_z >= -COURSE_LENGTH:
+        if (
+            math.hypot(
+                frame[0] - _course_center_x(checkpoint_z),
+                frame[2] - checkpoint_z,
+            )
+            <= RESPAWN_RADIUS
+        ):
+            return True
+        checkpoint_z -= CHECKPOINT_SPACING
+    return False
 
 
 def _finite_number(value: Any, field: str) -> float:
@@ -91,7 +109,10 @@ def _check_ghost_path(frames: Sequence[Sequence[float]]) -> None:
     if frames[-1][2] > FINISH_Z + FINISH_SLACK:
         raise ValueError("ghost must reach the finish")
     for previous, current in zip(frames, frames[1:]):
-        if previous[2] - current[2] > MAX_FORWARD_STEP + 1e-9:
+        if (
+            previous[2] - current[2] > MAX_FORWARD_STEP + 1e-9
+            and not _near_checkpoint(current)
+        ):
             raise ValueError("ghost moves faster than the bike can")
 
 
