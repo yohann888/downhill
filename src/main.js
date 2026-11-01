@@ -548,6 +548,7 @@ window.addEventListener('keydown', (e) => {
     (e.code === 'KeyF' || e.code === 'KeyC' || e.code === 'KeyP')
     && (e.ctrlKey || e.metaKey || e.altKey)
   ) return;
+  if (e.code === 'Enter' && e.target instanceof Element && e.target.closest('a[href]')) return;
   if (
     game.mode === 'paused'
     && ui.pauseOverlay.contains(e.target)
