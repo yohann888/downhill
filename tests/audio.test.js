@@ -49,6 +49,7 @@ class FakeAudioContext {
     this.listeners = new Map();
     this.resumeCalls = 0;
     this.suspendCalls = 0;
+    this.callOrder = [];
     FakeAudioContext.instances.push(this);
   }
 
@@ -103,6 +104,7 @@ class FakeAudioContext {
 
   suspend() {
     this.suspendCalls += 1;
+    this.callOrder.push('suspend');
     return new Promise((resolve) => {
       this.resolveSuspend = () => {
         this.state = 'suspended';
@@ -114,6 +116,7 @@ class FakeAudioContext {
 
   resume() {
     this.resumeCalls += 1;
+    this.callOrder.push('resume');
     return new Promise((resolve) => {
       this.resolveResume = () => {
         this.state = 'running';
@@ -151,8 +154,7 @@ describe('createAudio context recovery', () => {
     const suspendPromise = audio.suspend();
     const resumePromise = audio.resume();
     context.resolveSuspend();
-    await Promise.resolve();
-    expect(context.resumeCalls).toBe(1);
+    await vi.waitFor(() => expect(context.resumeCalls).toBe(1));
 
     context.resolveResume();
     await Promise.all([suspendPromise, resumePromise]);
@@ -175,6 +177,24 @@ describe('createAudio context recovery', () => {
 
     context.resolveResume();
     expect(context.state).toBe('running');
+  });
+
+  it('keeps an interrupted context suspended when pause follows a resume gesture', async () => {
+    const audio = createAudio();
+    await audio.unlock();
+    const context = FakeAudioContext.instances[0];
+    context.state = 'interrupted';
+    context.dispatch('statechange');
+    documentStub.dispatch('pointerdown');
+
+    const suspendPromise = audio.suspend();
+    expect(context.callOrder).toEqual(['resume', 'suspend']);
+    expect(context.suspendCalls).toBe(1);
+
+    context.resolveResume();
+    context.resolveSuspend();
+    await suspendPromise;
+    expect(context.state).toBe('suspended');
   });
 
   it('selects playback audio session mode when available', async () => {

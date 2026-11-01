@@ -311,9 +311,9 @@ export function createAudio() {
     },
     async suspend() {
       wantRunning = false;
-      if (ctx && ctx.state === 'running') {
-        await ctx.suspend();
-        if (wantRunning) await ctx.resume();
+      if (ctx && ctx.state !== 'closed') {
+        await ctx.suspend().catch(() => {});
+        if (wantRunning) await ctx.resume().catch(() => {});
       }
     },
     async resume() {
