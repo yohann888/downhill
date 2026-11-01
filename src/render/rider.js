@@ -347,7 +347,7 @@ export function createRiderModel() {
   let assetStatus = { ready: false, reason: 'Assets have not been applied' };
   let crashState = null;
   let wavePoseActive = false;
-  let wavePoseTime = 0;
+  let activeRiderId = 'rider-body';
 
   function setAssets({
     riderBody,
@@ -356,6 +356,7 @@ export function createRiderModel() {
     backPrint,
     riderId = 'rider-body',
   } = {}) {
+    activeRiderId = riderId;
     const failAssetSetup = (reason, details = {}) => {
       assetHolder.clear();
       assetHolder.visible = false;
@@ -782,14 +783,12 @@ export function createRiderModel() {
       const waveLength = waving
         ? handChains[index].firstLength + handChains[index].secondLength
         : 0;
+      const blackWavePose = activeRiderId === 'rider-black';
       const waveTargetWorld = waving
         ? waveOriginWorld.clone()
-          .addScaledVector(
-            waveSideWorld,
-            waveLength * (0.35 + Math.sin(wavePoseTime * Math.PI * 4) * 0.10),
-          )
-          .addScaledVector(waveUpWorld, waveLength * 0.45)
-          .addScaledVector(waveForwardWorld, waveLength * 0.15)
+          .addScaledVector(waveSideWorld, waveLength * (blackWavePose ? 0.55 : 0.50))
+          .addScaledVector(waveUpWorld, waveLength * (blackWavePose ? 0.40 : 0.48))
+          .addScaledVector(waveForwardWorld, waveLength * 0.08)
         : gripLocal;
       const waveTargetLocal = waving
         ? assetRiderMotion.worldToLocal(waveTargetWorld.clone())
@@ -809,8 +808,8 @@ export function createRiderModel() {
       const elbowPole = waving
         ? waveOriginWorld.clone()
           .addScaledVector(waveSideWorld, waveLength)
-          .addScaledVector(waveUpWorld, -waveLength * 0.15)
-          .addScaledVector(waveForwardWorld, waveLength * 0.1)
+          .addScaledVector(waveUpWorld, -waveLength * (blackWavePose ? 1 : 0.6))
+          .addScaledVector(waveForwardWorld, waveLength * 0.05)
         : assetRiderMotion.localToWorld(
           crashing
             ? new THREE.Vector3(side * 0.58, 0.9, 0.25)
@@ -840,9 +839,8 @@ export function createRiderModel() {
       headlamp.visible = enabled;
     },
     setAssets,
-    setWavePose(active, time) {
+    setWavePose(active) {
       wavePoseActive = active;
-      wavePoseTime = time;
     },
     startCrash,
     resetCrash,
@@ -906,7 +904,7 @@ export function createRiderModel() {
       if (!assetHolder.visible && !crashState && wavePoseActive && fallbackWaveChain) {
         const shoulderLocal = new THREE.Vector3(0.18, 1.45, -0.12);
         const waveTargetLocal = shoulderLocal.clone().add(new THREE.Vector3(
-          0.30 + Math.sin(wavePoseTime * Math.PI * 4) * 0.12,
+          0.30,
           0.50,
           -0.20,
         ));
