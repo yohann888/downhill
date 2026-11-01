@@ -30,7 +30,6 @@ export function createAudio() {
   let previousMusic = 'music-ride';
   let youtubePlaying = false;
   let voiceSource = null;
-  let musicSwitchRequest = 0;
   const buffers = {};
   const loops = {};
   const loading = {};
@@ -66,9 +65,8 @@ export function createAudio() {
 
   async function switchMusic(name, version) {
     if (name === 'youtube') return;
-    const request = ++musicSwitchRequest;
     const buffer = await load(name);
-    if (!buffer || !ctx || request !== musicSwitchRequest || version !== musicSelectionVersion || name !== selectedMusic || musicSourceVersion === version) return;
+    if (!buffer || !ctx || version !== musicSelectionVersion || name !== selectedMusic || musicSourceVersion === version) return;
     const now = ctx.currentTime;
     const previousSource = musicSource;
     const previousGain = musicGain;
