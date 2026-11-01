@@ -19,6 +19,7 @@ export function getMusicGainTarget(target, { muted, selectedMusic, youtubePlayin
 
 export function createAudio() {
   let ctx = null;
+  let unlockReady = null;
   let wantRunning = true;
   let resumeGestureArmed = false;
   let master = null;
@@ -283,8 +284,8 @@ export function createAudio() {
     async unlock() {
       wantRunning = true;
       if (ctx) {
-        if (ctx.state !== 'running') await ctx.resume().catch(() => {});
-        return;
+        if (ctx.state !== 'running' && ctx.state !== 'closed') await ctx.resume().catch(() => {});
+        return unlockReady;
       }
       try {
         if (typeof navigator !== 'undefined' && navigator.audioSession) {
@@ -302,14 +303,17 @@ export function createAudio() {
       master.gain.value = muted ? 0 : volume;
       master.connect(ctx.destination);
       createRainNoise();
-      await Promise.all([...LOOPS, ...ONESHOTS].map(load));
-      for (const name of LOOPS) startLoop(name);
-      setLoop('forest-loop', 0.35);
-      if (!musicSource) {
-        const version = musicSelectionVersion;
-        await load(selectedMusic);
-        await switchMusic(selectedMusic, version);
-      }
+      unlockReady = (async () => {
+        await Promise.all([...LOOPS, ...ONESHOTS].map(load));
+        for (const name of LOOPS) startLoop(name);
+        setLoop('forest-loop', 0.35);
+        if (!musicSource) {
+          const version = musicSelectionVersion;
+          await load(selectedMusic);
+          await switchMusic(selectedMusic, version);
+        }
+      })();
+      return unlockReady;
     },
     async suspend() {
       wantRunning = false;

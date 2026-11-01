@@ -229,6 +229,33 @@ describe('createAudio context recovery', () => {
     expect(context.startedBuffers.filter((buffer) => buffer?.name === './assets/audio/music-lofi.mp3')).toHaveLength(1);
   });
 
+  it('waits for pending audio setup when unlock is called again', async () => {
+    let resolveVoGo;
+    vi.stubGlobal('fetch', async (url) => {
+      if (url.endsWith('vo-go.mp3')) {
+        return new Promise((resolve) => {
+          resolveVoGo = () => resolve({ ok: true, arrayBuffer: async () => url });
+        });
+      }
+      return { ok: true, arrayBuffer: async () => url };
+    });
+
+    const audio = createAudio();
+    const firstUnlock = audio.unlock();
+    const secondUnlock = audio.unlock();
+    await vi.waitFor(() => expect(resolveVoGo).toBeTypeOf('function'));
+    resolveVoGo();
+
+    try {
+      await secondUnlock;
+      audio.event('start');
+      const context = FakeAudioContext.instances[0];
+      expect(context.startedBuffers.some((buffer) => buffer?.name === './assets/audio/vo-go.mp3')).toBe(true);
+    } finally {
+      await firstUnlock;
+    }
+  });
+
   it('selects playback audio session mode when available', async () => {
     const audioSession = { type: 'auto' };
     vi.stubGlobal('navigator', { audioSession });
