@@ -347,7 +347,7 @@ export function createRiderModel() {
   let assetStatus = { ready: false, reason: 'Assets have not been applied' };
   let crashState = null;
   let wavePoseActive = false;
-  let wavePoseTime = 0;
+  let activeRiderId = 'rider-body';
 
   function setAssets({
     riderBody,
@@ -356,6 +356,7 @@ export function createRiderModel() {
     backPrint,
     riderId = 'rider-body',
   } = {}) {
+    activeRiderId = riderId;
     const failAssetSetup = (reason, details = {}) => {
       assetHolder.clear();
       assetHolder.visible = false;
@@ -764,16 +765,34 @@ export function createRiderModel() {
           assetSteer.localToWorld(new THREE.Vector3(side * 0.215, 0.665, 0.385)),
         );
       const waving = wavePoseActive && side > 0 && !crashing;
-      const shoulderLocal = waving
-        ? assetRiderMotion.worldToLocal(boneWorldPosition(riderBones.rightShoulder))
+      const waveOriginWorld = waving
+        ? boneWorldPosition(riderBones.rightArm)
         : null;
-      const waveTargetLocal = waving
-        ? shoulderLocal.clone().add(new THREE.Vector3(
-          side * 0.30 + Math.sin(wavePoseTime * Math.PI * 4) * 0.12,
-          0.50,
-          0.20,
-        ))
+      const waveSideWorld = waving
+        ? boneWorldPosition(riderBones.rightShoulder)
+          .sub(boneWorldPosition(riderBones.leftShoulder))
+          .normalize()
+        : null;
+      const waveUpWorld = waving
+        ? new THREE.Vector3(0, 1, 0).transformDirection(assetRiderMotion.matrixWorld)
+        : null;
+      const waveForwardWorld = waving
+        ? new THREE.Vector3(0, 0, -1)
+          .transformDirection(root.matrixWorld)
+        : null;
+      const waveLength = waving
+        ? handChains[index].firstLength + handChains[index].secondLength
+        : 0;
+      const blackWavePose = activeRiderId === 'rider-black';
+      const waveTargetWorld = waving
+        ? waveOriginWorld.clone()
+          .addScaledVector(waveSideWorld, waveLength * (blackWavePose ? 0.25 : 0.50))
+          .addScaledVector(waveUpWorld, waveLength * (blackWavePose ? -0.05 : 0.48))
+          .addScaledVector(waveForwardWorld, waveLength * (blackWavePose ? 0.40 : 0.08))
         : gripLocal;
+      const waveTargetLocal = waving
+        ? assetRiderMotion.worldToLocal(waveTargetWorld.clone())
+        : waveTargetWorld;
       const smoothedGrip = waving
         ? waveTargetLocal
         : stepVectorSpring(handTargets[index], gripLocal, dt, crashing ? 8 : 16);
@@ -786,15 +805,17 @@ export function createRiderModel() {
         handTargets[index].z.velocity = 0;
       }
       const handTarget = assetRiderMotion.localToWorld(smoothedGrip);
-      const elbowPole = assetRiderMotion.localToWorld(
-        waving
-          ? shoulderLocal.clone().add(new THREE.Vector3(side * 0.55, 0.15, 0.35))
-          : crashing
+      const elbowPole = waving
+        ? waveOriginWorld.clone()
+          .addScaledVector(waveSideWorld, waveLength * (blackWavePose ? 0.40 : 1))
+          .addScaledVector(waveUpWorld, -waveLength * (blackWavePose ? 1 : 0.6))
+          .addScaledVector(waveForwardWorld, waveLength * (blackWavePose ? 0.10 : 0.05))
+        : assetRiderMotion.localToWorld(
+          crashing
             ? new THREE.Vector3(side * 0.58, 0.9, 0.25)
             : new THREE.Vector3(side * 0.38, 0.85, 0.22),
-      );
+        );
       solveTwoBone(root, handChains[index], handTarget, elbowPole);
-      if (waving) rotateBoneAroundWorldAxis(riderBones.rightHand, forwardWorld, Math.PI / 2);
     }
 
     const headPitch = -(torsoPitch.value + pitchSpring.value);
@@ -818,9 +839,8 @@ export function createRiderModel() {
       headlamp.visible = enabled;
     },
     setAssets,
-    setWavePose(active, time) {
+    setWavePose(active) {
       wavePoseActive = active;
-      wavePoseTime = time;
     },
     startCrash,
     resetCrash,
@@ -884,7 +904,7 @@ export function createRiderModel() {
       if (!assetHolder.visible && !crashState && wavePoseActive && fallbackWaveChain) {
         const shoulderLocal = new THREE.Vector3(0.18, 1.45, -0.12);
         const waveTargetLocal = shoulderLocal.clone().add(new THREE.Vector3(
-          0.30 + Math.sin(wavePoseTime * Math.PI * 4) * 0.12,
+          0.30,
           0.50,
           -0.20,
         ));

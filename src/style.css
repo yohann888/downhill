@@ -14,6 +14,11 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #000; font-f
 .energy-timer { color: #42edff; }
 .timer-stat { min-width: 92px; text-align: right; }
 #ghost-status { font-size: 11px; opacity: .9; white-space: nowrap; text-shadow: 0 1px 4px rgba(0,0,0,.6); }
+#split-status { font: 26px/1.2 'Bungee', system-ui, sans-serif; text-shadow: 0 1px 4px rgba(0,0,0,.8); white-space: nowrap; }
+#split-status[hidden], #ghost-split[hidden] { display: none; }
+#ghost-split { display: block; font-size: 14px; }
+#split-status.ahead { color: #8bff9a; }
+#split-status.behind { color: #ff8585; }
 .progress-wrap { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; }
 .progress { position: relative; flex: 1; height: 10px; border: 1px solid rgba(255,255,255,.9); border-radius: 5px; background: rgba(255,255,255,.25); overflow: hidden; }
 #progress-fill { height: 100%; width: 0; background: #ffb547; }
@@ -41,16 +46,25 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #000; font-f
 .panel h1 { margin: 0 0 10px; font-size: 40px; letter-spacing: .02em; }
 .panel p { margin: 0 0 18px; opacity: .85; line-height: 1.5; }
 .panel button { font: inherit; font-size: 18px; font-weight: 700; padding: 10px 34px; border: 0; border-radius: 8px; background: #ffb547; color: #1a1206; cursor: pointer; }
-#finish-controls { display: grid; grid-template-columns: auto minmax(120px, 1fr) auto; align-items: center; gap: 8px; margin: 16px auto; max-width: 620px; }
+#finish-controls { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; margin: 16px auto; max-width: 620px; }
 #finish-controls[hidden], #start-leaderboard[hidden] { display: none; }
-#finish-controls label { text-align: right; }
-#finish-controls input { min-width: 0; padding: 10px; border: 1px solid rgba(255,255,255,.45); border-radius: 6px; color: #fff; background: rgba(0,0,0,.35); font: inherit; }
+#finish-controls .initials-label { text-align: right; }
+#initials-picker { display: flex; justify-content: center; gap: 6px; min-width: 0; }
+.initial-slot-group { display: grid; grid-template-rows: 24px 44px 24px; justify-items: center; }
+.initial-slot-group button { width: 48px; min-width: 0; padding: 0; border: 1px solid rgba(255,255,255,.45); border-radius: 4px; color: #fff; background: rgba(0,0,0,.35); cursor: pointer; }
+#finish-controls .initial-slot-group button { padding-inline: 0; }
+.initial-slot-group .initial-step { font-size: 12px; line-height: 1; }
+.initial-slot-group .initial-slot { font: 20px/1 'Bungee', system-ui, sans-serif; }
+.initial-slot-group button:focus-visible { outline: 2px solid #ffe14a; outline-offset: 1px; }
+.initial-slot-group button:disabled { opacity: .6; }
 #finish-controls button { padding-inline: 18px; }
 #finish-leaderboard { grid-column: 1 / -1; }
 #finish-leaderboard[hidden] { display: none; }
-.leaderboard { margin: 12px auto; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.leaderboard { width: 100%; table-layout: fixed; margin: 12px auto; border-collapse: collapse; font-variant-numeric: tabular-nums; }
 .leaderboard th, .leaderboard td { padding: 4px 12px; text-align: left; }
 .leaderboard th { opacity: .7; font-size: 12px; }
+.leaderboard td:nth-child(2) { font: 20px/1.3 'Bungee', system-ui, sans-serif; }
+.leaderboard td:last-child, .leaderboard th:last-child { width: 90px; text-align: right; white-space: nowrap; }
 .leaderboard .player-row { color: #ffcf7f; font-weight: 700; }
 #hud.wave-mode .hud-top { display: none; }
 #hud.wave-mode #pickup-timers { display: none; }
@@ -63,6 +77,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #000; font-f
 #wave-panel .leaderboard th:first-child, #wave-panel .leaderboard td:first-child { width: 72px; white-space: nowrap; }
 #wave-panel .leaderboard th:last-child, #wave-panel .leaderboard td:last-child { width: 70px; white-space: nowrap; }
 #wave-panel .leaderboard td:nth-child(2) { min-width: 0; max-width: 112px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#wave-panel .leaderboard td:nth-child(2) { font-size: 18px; }
 #wave-panel .leaderboard .medal { min-width: 0; padding: 3px 4px; font-size: 6px; }
 #wave-ride-again { display: block; width: 100%; padding: 6px 10px; border: 1px solid rgba(255,255,255,.4); border-radius: 6px; background: rgba(255,181,71,.9); color: #1a1206; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
 #commentary-subtitle { position: fixed; left: 18%; right: 18%; bottom: 100px; z-index: 2; text-align: center; font-size: clamp(18px, 3vw, 28px); font-weight: 700; color: #fff; text-shadow: 0 2px 8px #000; opacity: 0; transition: opacity .2s; pointer-events: none; }
@@ -140,7 +155,8 @@ body:has(#overlay.start:not(.hidden)) .hud-top, body:has(#overlay.start:not(.hid
 .arcade-scores .place { width: 4ch; color: #22e8ff; }
 .arcade-scores li:first-child .place { color: inherit; }
 .arcade-scores .name { flex: 1 1 auto; min-width: 0; max-width: calc(100% - 11em); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.arcade-scores .time { flex: 0 0 auto; font-variant-numeric: tabular-nums; }
+.arcade-scores .name { font: 18px/1.2 'Bungee', system-ui, sans-serif; }
+.arcade-scores .time { flex: 0 0 7ch; font: 14px/1.2 'Bungee', system-ui, sans-serif; font-variant-numeric: tabular-nums; text-align: right; }
 .menu-empty { margin: 4px 0 !important; font: 10px/1.8 'Press Start 2P', monospace; color: #e9f9ff; opacity: 1 !important; }
 .menu-best { margin: 12px 0 0 !important; padding-top: 10px; border-top: 2px dashed rgba(34,232,255,.4); font: 10px/1.4 'Press Start 2P', monospace; color: #22e8ff; text-align: center; opacity: 1 !important; }
 .menu-best:empty { display: none; }
@@ -177,6 +193,8 @@ kbd { display: inline-block; min-width: 24px; padding: 3px 6px 2px; border: 2px 
   .menu-card { padding: 8px 10px; }
   .menu-card h2 { margin-bottom: 8px; font-size: 10px; }
   .arcade-scores { gap: 4px; font-size: 9px; }
+  .arcade-scores .name { font-size: 15px; }
+  .arcade-scores .time { flex-basis: 7ch; font-size: 12px; }
   .menu-best { margin-top: 8px !important; padding-top: 6px; font-size: 9px; }
   .menu-goal { margin-bottom: 6px !important; font-size: 12px; }
   .menu-keys { gap: 3px; font-size: 11px; }
@@ -284,6 +302,8 @@ body:has(#overlay:not(.hidden)) #brand-badge { visibility: hidden; }
   .hud-top .stat small { font-size: 10px; }
   .timer-stat { min-width: 58px; }
   #ghost-status { font-size: 9px; }
+  #split-status { font-size: 18px; }
+  #ghost-split { font-size: 11px; }
   #progress-percent { min-width: 3ch; font-size: 10px; }
   #audio-controls { top: calc(env(safe-area-inset-top) + 104px); right: 10px; gap: 5px; }
   #audio-controls .hud-label { display: none; }
@@ -308,7 +328,7 @@ body:has(#overlay:not(.hidden)) #brand-badge { visibility: hidden; }
 .medal-crown { font: 10px/1 Arial, sans-serif; }
 .arcade-scores .place { display: flex; align-items: center; width: 5.8em; flex: 0 0 5.8em; }
 .leaderboard td:first-child { white-space: nowrap; }
-#wave-rival-line { margin: 2px 0 8px; color: #ffe14a; font: 9px/1.6 'Press Start 2P', monospace; text-align: center; }
+#wave-rival-line { margin: 2px 0 8px; color: #ffe14a; font: 18px/1.3 'Bungee', system-ui, sans-serif; text-align: center; overflow-wrap: anywhere; }
 #wave-rival-line[hidden] { display: none; }
 @keyframes medal-shine { 0%, 20% { left: -70%; } 65%, 100% { left: 130%; } }
 @media (prefers-reduced-motion: reduce) { .medal::after { animation: none; } }
@@ -316,8 +336,14 @@ body:has(#overlay:not(.hidden)) #brand-badge { visibility: hidden; }
   .full-board-panel { padding: 10px; max-height: calc(100dvh - 20px); }
   .full-board-panel h2 { font-size: 11px; }
   #full-leaderboard-list .leaderboard { font-size: 8px; }
+  #full-leaderboard-list .leaderboard td:nth-child(2) { font-size: 15px; }
   #full-leaderboard-list .leaderboard th:first-child, #full-leaderboard-list .leaderboard td:first-child { width: 62px; }
   #full-leaderboard-list .leaderboard th:last-child, #full-leaderboard-list .leaderboard td:last-child { width: 76px; }
   #full-leaderboard-list .leaderboard td:nth-child(2) { max-width: calc(100% - 138px); }
   #full-leaderboard-list .leaderboard th, #full-leaderboard-list .leaderboard td { padding: 6px 3px; }
+  #finish-controls { grid-template-columns: auto minmax(0, 1fr); }
+  #finish-controls > button[type="submit"] { grid-column: 1 / -1; width: 100%; }
+  .initial-slot-group button { width: 42px; }
+  .initial-slot-group .initial-slot { font-size: 18px; }
+  #wave-panel .leaderboard td:nth-child(2) { font-size: 16px; }
 }

@@ -19,10 +19,12 @@ import {
   slowMoTarget,
 } from './feel.js';
 import { getCommentary, getLeaderboard, postRun } from './api.js';
-import { buildRankOverlayRows, cleanText, rivalLine } from './leaderboard.js';
+import { buildRankOverlayRows, cleanText, displayName, rivalLine } from './leaderboard.js';
 import { createRecorder, sampleGhost } from './ghost.js';
 import { getEditableKeyboardTarget } from './keyboard.js';
 import { savePhoto } from './photo.js';
+import { ghostTimeAtZ, loadBestSplits, saveBestSplits, splitDelta } from './splits.js';
+import { createDodgeTracker, updateDodgeTracker } from './dodge.js';
 import { APP_VERSION_LABEL } from './app-version.js';
 import {
   loadRiderPreference,
@@ -61,6 +63,7 @@ const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerH
 
 const terrain = createTerrain();
 const obstacles = createObstacles(terrain);
+let dodgeTracker = createDodgeTracker();
 const pickups = createPickups(terrain, obstacles);
 const world = buildWorld(scene, renderer, terrain, obstacles, pickups);
 const post = queryParams.has('nopost')
@@ -105,7 +108,8 @@ const ui = {
   startLeaderboard: document.getElementById('start-leaderboard'),
   startBest: document.getElementById('start-best'),
   finishForm: document.getElementById('finish-controls'),
-  nameInput: document.getElementById('rider-name'),
+  initialsPicker: document.getElementById('initials-picker'),
+  initialSlots: [...document.querySelectorAll('.initial-slot')],
   submitButton: document.querySelector('#finish-controls button[type="submit"]'),
   finishLeaderboard: document.getElementById('finish-leaderboard'),
   leaderboardTitle: document.getElementById('leaderboard-open-title'),
@@ -123,6 +127,9 @@ const ui = {
   hud: document.getElementById('hud'),
   touch: document.getElementById('touch'),
   ghostStatus: document.getElementById('ghost-status'),
+  splitStatus: document.getElementById('split-status'),
+  splitDelta: document.getElementById('split-delta'),
+  ghostSplit: document.getElementById('ghost-split'),
   subtitle: document.getElementById('commentary-subtitle'),
   mute: document.getElementById('mute'),
   music: document.getElementById('music-select'),
@@ -152,6 +159,80 @@ function syncHudButton(button, label) {
   button.querySelector('.hud-label').textContent = label;
   button.setAttribute('aria-label', label);
   button.title = label;
+}
+const INITIALS_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+function setInitials(value) {
+  const initials = String(value || 'AAA').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 3);
+  ui.initialSlots.forEach((slot, index) => {
+    const character = initials[index] || '';
+    slot.dataset.value = character;
+    slot.textContent = character || '_';
+    slot.setAttribute('aria-valuetext', character || 'blank');
+    slot.setAttribute('aria-valuenow', String(Math.max(0, INITIALS_CHARS.indexOf(character))));
+  });
+}
+function getInitials() {
+  return ui.initialSlots.map((slot) => slot.dataset.value || '').filter(Boolean).join('');
+}
+function setInitialsDisabled(disabled) {
+  ui.initialSlots.forEach((slot) => { slot.disabled = disabled; });
+  ui.initialsPicker.querySelectorAll('.initial-step').forEach((button) => {
+    button.disabled = disabled;
+  });
+}
+function stepInitial(index, amount) {
+  const slot = ui.initialSlots[index];
+  const current = INITIALS_CHARS.indexOf(slot.dataset.value || '');
+  const next = current < 0
+    ? (amount > 0 ? 0 : INITIALS_CHARS.length - 1)
+    : (current + amount + INITIALS_CHARS.length) % INITIALS_CHARS.length;
+  setSlotValue(index, INITIALS_CHARS[next]);
+}
+function setSlotValue(index, value) {
+  const slot = ui.initialSlots[index];
+  slot.dataset.value = value;
+  slot.textContent = value || '_';
+  slot.setAttribute('aria-valuetext', value || 'blank');
+  slot.setAttribute('aria-valuenow', String(Math.max(0, INITIALS_CHARS.indexOf(value))));
+}
+function focusInitial(index) {
+  ui.initialSlots[Math.max(0, Math.min(ui.initialSlots.length - 1, index))].focus();
+}
+setInitials(localStorage.getItem('downhill.initials') || 'AAA');
+ui.initialsPicker.addEventListener('click', (event) => {
+  const button = event.target.closest('.initial-step');
+  if (!button) return;
+  const index = Number(button.dataset.initialIndex);
+  stepInitial(index, Number(button.dataset.change));
+  focusInitial(index);
+});
+for (const slot of ui.initialSlots) {
+  slot.addEventListener('keydown', (event) => {
+    const index = Number(slot.dataset.initialIndex);
+    if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+      event.preventDefault();
+      event.stopPropagation();
+      stepInitial(index, event.key === 'ArrowUp' ? 1 : -1);
+    } else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+      event.preventDefault();
+      event.stopPropagation();
+      focusInitial(index + (event.key === 'ArrowRight' ? 1 : -1));
+    } else if (/^[A-Z0-9]$/i.test(event.key) && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      event.preventDefault();
+      event.stopPropagation();
+      setSlotValue(index, event.key.toUpperCase());
+      focusInitial(index + 1);
+    } else if (event.key === 'Backspace') {
+      event.preventDefault();
+      event.stopPropagation();
+      setSlotValue(index, '');
+      focusInitial(index - 1);
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      event.stopPropagation();
+      submitRun();
+    }
+  });
 }
 function syncPauseButton(paused = false) {
   syncHudButton(ui.pause, paused ? 'Resume (P)' : 'Pause (P)');
@@ -542,7 +623,7 @@ window.addEventListener('keydown', (e) => {
     setKey('jump', true);
     e.preventDefault();
   }
-  if (e.code === 'Enter' && game.mode === 'finished' && e.target !== ui.nameInput) {
+  if (e.code === 'Enter' && game.mode === 'finished') {
     e.preventDefault();
     submitRun();
     } else if (e.code === 'Enter' && youtubeControls.contains(e.target)) {
@@ -624,6 +705,11 @@ const game = {
   qualityFps: null,
   assetsReady: false,
   crashedSinceCheckpoint: false,
+  bestSplits: null,
+  runSplits: [],
+  splitTimer: 0,
+  splitDelta: null,
+  ghostSplitDelta: null,
   runId: 0,
   runSubmitted: false,
   runSubmitting: false,
@@ -680,6 +766,12 @@ function start() {
   clearPowerUps();
   game.mode = 'riding';
   game.time = 0;
+  dodgeTracker = createDodgeTracker();
+  game.bestSplits = loadBestSplits(localStorage, terrain.checkpoints.length);
+  game.runSplits = [];
+  game.splitTimer = 0;
+  game.splitDelta = null;
+  game.ghostSplitDelta = null;
   game.airTime = 0;
   game.airPeak = 0;
   game.airDoubleJumped = false;
@@ -704,7 +796,7 @@ function start() {
   slowMoLocked = false;
   game.crashedSinceCheckpoint = false;
   ui.finishForm.hidden = true;
-  ui.nameInput.disabled = false;
+  setInitialsDisabled(false);
   ui.submitButton.disabled = false;
   ui.submitButton.textContent = 'Submit';
   ui.finishLeaderboard.hidden = true;
@@ -729,6 +821,7 @@ function respawn(manual) {
   const doubleJumpTime = game.bike?.doubleJumpTime ?? 0;
   placeBike(p.x, p.z, p.heading, cp ? 5 : 0);
   game.bike.doubleJumpTime = doubleJumpTime;
+  updateDodgeTracker(dodgeTracker, { crashed: true }, obstacles, game.time);
   game.airDoubleJumped = false;
   model.resetCrash();
   game.airTime = 0;
@@ -986,7 +1079,7 @@ function renderStartBoard(empty = 'No times yet. Set the first one.') {
       appendRank(place, index + 1, placeLabel(index + 1));
       const name = document.createElement('span');
       name.className = 'name';
-      name.textContent = cleanText(entry.name);
+      name.textContent = displayName(entry.name);
       const time = document.createElement('span');
       time.className = 'time';
       time.textContent = Number(entry.time).toFixed(2);
@@ -1008,7 +1101,7 @@ function refreshStartBoard() {
     leaderboardEntries = result.top || [];
     bestGhost = result.ghost || null;
     ui.ghostStatus.textContent = bestGhost
-      ? `Ghost: ${bestGhost.name} ${Number(bestGhost.time).toFixed(2)} s`
+      ? `Ghost: ${displayName(bestGhost.name)} ${Number(bestGhost.time).toFixed(2)} s`
       : '';
     renderStartBoard();
   });
@@ -1044,7 +1137,7 @@ function renderLeaderboard(container, entries, playerRank = null) {
     const rankCell = document.createElement('td');
     appendRank(rankCell, index + 1);
     const name = document.createElement('td');
-    name.textContent = cleanText(entry.name);
+    name.textContent = displayName(entry.name);
     const time = document.createElement('td');
     time.textContent = `${Number(entry.time).toFixed(2)} s`;
     row.append(rankCell, name, time);
@@ -1083,7 +1176,7 @@ function renderRankOverlay(container, rows) {
     const rankCell = document.createElement('td');
     appendRank(rankCell, entry.rank);
     const name = document.createElement('td');
-    name.textContent = entry.name;
+    name.textContent = displayName(entry.name);
     const time = document.createElement('td');
     time.textContent = `${Number(entry.time).toFixed(2)} s`;
     row.append(rankCell, name, time);
@@ -1144,13 +1237,20 @@ async function submitRun() {
   if (game.mode !== 'finished' || game.runSubmitted || game.runSubmitting) return;
   const runId = game.runId;
   game.runSubmitting = true;
-  ui.nameInput.disabled = true;
+  setInitialsDisabled(true);
   ui.submitButton.disabled = true;
   ui.submitButton.textContent = 'Submitting...';
   try {
-    const name = ui.nameInput.value.trim() || 'Rider';
-    ui.nameInput.value = name;
-    localStorage.setItem('downhill-name', name);
+    const name = getInitials();
+    if (!name) {
+      setInitialsDisabled(false);
+      focusInitial(0);
+      game.runSubmitting = false;
+      ui.submitButton.disabled = false;
+      ui.submitButton.textContent = 'Submit';
+      return;
+    }
+    localStorage.setItem('downhill.initials', name);
     const run = { ...makeRunStats(name), ghost: ghostRecorder.getGhost() };
     const result = await postRun(run);
     if (runId !== game.runId) return;
@@ -1174,7 +1274,7 @@ async function submitRun() {
     if (runId === game.runId) {
       game.runSubmitting = false;
       if (!game.runSubmitted) {
-        ui.nameInput.disabled = false;
+        setInitialsDisabled(false);
         ui.submitButton.disabled = false;
         ui.submitButton.textContent = 'Submit';
       }
@@ -1224,6 +1324,18 @@ function simulate(input) {
   }
   if (b.foliageHit) dust.leafBurst(b.foliageHit);
   game.time += DT;
+  game.splitTimer = Math.max(0, game.splitTimer - DT);
+  const dodgeEvents = updateDodgeTracker(dodgeTracker, b, obstacles, game.time);
+  for (const event of dodgeEvents) {
+    if (event.type === 'dodge') {
+      game.bonus += 0.3;
+      flash('Otter dodge -0.3s', 1200);
+      audio.squeak();
+    } else if (event.type === 'combo') {
+      game.bonus += 1;
+      flash('Otter whisperer -1s', 1500);
+    }
+  }
   if (!game.leaderboardWarmed && -b.z / terrain.courseLength >= 0.8) {
     game.leaderboardWarmed = true;
     void getLeaderboard();
@@ -1272,6 +1384,15 @@ function simulate(input) {
   const next = terrain.checkpoints[game.checkpoint + 1];
   if (next && s >= next.s) {
     game.checkpoint += 1;
+    const splitIndex = game.checkpoint;
+    const runTime = game.time + game.penalty - game.bonus;
+    game.runSplits[splitIndex] = runTime;
+    const delta = splitDelta(runTime, game.bestSplits?.[splitIndex]);
+    const ghostTime = bestGhost ? ghostTimeAtZ(bestGhost, next.z) : null;
+    game.splitDelta = delta;
+    game.ghostSplitDelta = ghostTime === null ? null : game.time - ghostTime;
+    game.splitTimer = 1.5;
+    if (delta !== null) audio.chime(delta <= 0);
     flash(`Checkpoint ${game.checkpoint + 1}`, 900);
     audio.event('checkpoint', !game.crashedSinceCheckpoint && !b.crashed);
     game.crashedSinceCheckpoint = false;
@@ -1296,6 +1417,7 @@ function simulate(input) {
     if (isBest) {
       game.best = total;
       localStorage.setItem('downhill-best-900', String(total));
+      saveBestSplits(localStorage, terrain.checkpoints.length, game.runSplits);
     }
     audio.event('finish');
     if (isBest) audio.event('best');
@@ -1306,9 +1428,10 @@ function simulate(input) {
     );
     ui.finishForm.hidden = false;
     ui.finishLeaderboard.hidden = true;
-    ui.nameInput.value = localStorage.getItem('downhill-name') || 'Rider';
+    setInitials(localStorage.getItem('downhill.initials') || 'AAA');
     ui.finishLeaderboard.replaceChildren();
-    getCommentary({ ...makeRunStats(ui.nameInput.value.trim() || 'Rider'), rank: null }).then(showCommentary);
+    getCommentary({ ...makeRunStats(getInitials()), rank: null }).then(showCommentary);
+    focusInitial(0);
   }
 }
 
@@ -1443,7 +1566,7 @@ function showMenu() {
   updateMovingObstacles(obstacles, 0);
   world.update(0);
   ui.finishForm.hidden = true;
-  ui.nameInput.disabled = false;
+  setInitialsDisabled(false);
   ui.submitButton.disabled = false;
   ui.submitButton.textContent = 'Submit';
   ui.finishLeaderboard.hidden = true;
@@ -1575,6 +1698,22 @@ function updateHud() {
   }
   ui.speed.textContent = String(Math.round(b.v * 3.6));
   ui.timer.textContent = (game.time + game.penalty - game.bonus).toFixed(2);
+  const splitVisible = game.splitTimer > 0 && activeRide;
+  ui.splitStatus.hidden = !splitVisible;
+  ui.ghostStatus.hidden = splitVisible;
+  if (splitVisible) {
+    ui.splitDelta.textContent = game.splitDelta === null
+      ? ''
+      : `${game.splitDelta > 0 ? '+' : ''}${game.splitDelta.toFixed(2)}`;
+    ui.splitStatus.classList.toggle('ahead', game.splitDelta !== null && game.splitDelta <= 0);
+    ui.splitStatus.classList.toggle('behind', game.splitDelta !== null && game.splitDelta > 0);
+    ui.ghostSplit.hidden = game.ghostSplitDelta === null;
+    if (game.ghostSplitDelta !== null) {
+      ui.ghostSplit.textContent = `vs ${displayName(bestGhost?.name)} ${game.ghostSplitDelta > 0 ? '+' : ''}${game.ghostSplitDelta.toFixed(2)}`;
+    }
+  } else {
+    ui.splitStatus.classList.remove('ahead', 'behind');
+  }
   const progress = Math.max(0, Math.min(1, -b.z / terrain.courseLength));
   ui.progress.style.width = `${progress * 100}%`;
   ui.progressPercent.textContent = `${Math.round(progress * 100)}%`;

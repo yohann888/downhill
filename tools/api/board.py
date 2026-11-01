@@ -9,7 +9,7 @@ from typing import Any
 MAX_FRAMES = 6000
 TOP_SIZE = 50
 RUNS_PER_IP_HOUR = 30
-_NAME_PATTERN = re.compile(r"[A-Za-z0-9 _-]{1,12}\Z")
+_NAME_PATTERN = re.compile(r"[A-Z0-9]{1,3}\Z")
 _RUN_NUMBER_FIELDS = ("time", "penalties", "bonus", "topSpeed", "crashes", "otterHits", "maxAir")
 
 
@@ -67,10 +67,10 @@ def validate_run(body: Mapping[str, Any]) -> dict[str, Any]:
 
     raw_name = body.get("name")
     if not isinstance(raw_name, str):
-        raise ValueError("name must be 1 to 12 valid characters")
-    name = raw_name.strip()
+        raise ValueError("name must be 1 to 3 letters or digits")
+    name = raw_name.strip().upper()
     if not _NAME_PATTERN.fullmatch(name):
-        raise ValueError("name must be 1 to 12 valid characters")
+        raise ValueError("name must be 1 to 3 letters or digits")
 
     values = {
         field: _finite_number(body.get(field, 0 if field == "bonus" else None), field)

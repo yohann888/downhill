@@ -7,7 +7,7 @@ from board import consume_rate_limit, insert_top, quantize_ghost, validate_run
 
 def valid_run(**overrides):
     run = {
-        "name": "Rider",
+        "name": "AAA",
         "time": 30,
         "penalties": 2,
         "topSpeed": 42.5,
@@ -23,10 +23,10 @@ def valid_run(**overrides):
     return run
 
 
-def test_validate_run_trims_name_and_quantizes_ghost():
-    run = validate_run(valid_run(name=" Rider "))
+def test_validate_run_normalizes_initials_and_quantizes_ghost():
+    run = validate_run(valid_run(name=" ab9 "))
 
-    assert run["name"] == "Rider"
+    assert run["name"] == "AB9"
     assert run["ghost"]["frames"][0] == [0.0, 1.23, 2.0, 0.0, 0.0]
     assert run["bonus"] == 0
 
@@ -45,6 +45,7 @@ def test_validate_run_includes_bonus_in_simulated_ghost_duration():
     [
         ({"name": "   "}, "name"),
         ({"name": "name-too-long1"}, "name"),
+        ({"name": "ABCD"}, "name"),
         ({"name": "bad/name"}, "name"),
         ({"time": 20}, "time"),
         ({"time": 600}, "time"),
