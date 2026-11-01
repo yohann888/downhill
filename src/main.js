@@ -1,3 +1,4 @@
+// Downhill, a devkick game jam build: https://devkick.com/downhill/
 import * as THREE from 'three';
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { applyPickup, createBike, stepBike } from './physics/bike.js';
