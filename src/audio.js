@@ -19,6 +19,8 @@ export function getMusicGainTarget(target, { muted, selectedMusic, youtubePlayin
 
 export function createAudio() {
   let ctx = null;
+  let wantRunning = true;
+  let resumeGestureArmed = false;
   let master = null;
   let musicGain = null;
   let musicSource = null;
@@ -36,6 +38,7 @@ export function createAudio() {
     : MUSIC_TRACKS[0].id;
   let musicSelectionVersion = 0;
   let musicRateScale = 1;
+  const resumeEvents = ['pointerdown', 'touchend', 'keydown'];
   const storedMute = localStorage.getItem('downhill-muted');
   let muted = storedMute === '1';
   const storedVolume = localStorage.getItem('downhill-volume');
@@ -225,6 +228,24 @@ export function createAudio() {
     rainNodes = { highGain, lowGain };
   }
 
+  function resumeFromGesture() {
+    for (const type of resumeEvents) {
+      document.removeEventListener(type, resumeFromGesture, true);
+    }
+    resumeGestureArmed = false;
+    if (wantRunning && ctx && ctx.state !== 'running' && ctx.state !== 'closed') {
+      ctx.resume().catch(() => {});
+    }
+  }
+
+  function armResumeGesture() {
+    if (resumeGestureArmed || typeof document === 'undefined') return;
+    resumeGestureArmed = true;
+    for (const type of resumeEvents) {
+      document.addEventListener(type, resumeFromGesture, { once: true, capture: true });
+    }
+  }
+
   async function playCommentary(base64) {
     if (!ctx || !master || !base64) return false;
     let source = null;
@@ -258,8 +279,23 @@ export function createAudio() {
     get muted() { return muted; },
     get volume() { return volume; },
     async unlock() {
-      if (ctx) { if (ctx.state === 'suspended') await ctx.resume(); return; }
+      wantRunning = true;
+      if (ctx) {
+        if (ctx.state !== 'running') await ctx.resume().catch(() => {});
+        return;
+      }
+      try {
+        if (typeof navigator !== 'undefined' && navigator.audioSession) {
+          navigator.audioSession.type = 'playback';
+        }
+      } catch {}
       ctx = new AudioContext();
+      ctx.addEventListener('statechange', () => {
+        if (wantRunning && ctx.state !== 'running' && ctx.state !== 'closed') {
+          armResumeGesture();
+        }
+      });
+      if (ctx.state !== 'running' && ctx.state !== 'closed') armResumeGesture();
       master = ctx.createGain();
       master.gain.value = muted ? 0 : volume;
       master.connect(ctx.destination);
@@ -274,10 +310,17 @@ export function createAudio() {
       }
     },
     async suspend() {
-      if (ctx && ctx.state === 'running') await ctx.suspend();
+      wantRunning = false;
+      if (ctx && ctx.state === 'running') {
+        await ctx.suspend();
+        if (wantRunning) await ctx.resume();
+      }
     },
     async resume() {
-      if (ctx && ctx.state === 'suspended') await ctx.resume();
+      wantRunning = true;
+      if (ctx && ctx.state !== 'running' && ctx.state !== 'closed') {
+        await ctx.resume().catch(() => {});
+      }
     },
     get music() {
       return MUSIC_TRACKS.find((track) => track.id === selectedMusic);

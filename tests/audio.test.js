@@ -1,5 +1,191 @@
-import { describe, expect, it } from 'vitest';
-import { getMusicGainTarget } from '../src/audio.js';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
+import { createAudio, getMusicGainTarget } from '../src/audio.js';
+
+class FakeDocument {
+  constructor() {
+    this.listeners = new Map();
+  }
+
+  addEventListener(type, listener, options = {}) {
+    const listeners = this.listeners.get(type) || [];
+    listeners.push({ listener, once: Boolean(options.once) });
+    this.listeners.set(type, listeners);
+  }
+
+  removeEventListener(type, listener) {
+    this.listeners.set(
+      type,
+      (this.listeners.get(type) || []).filter((entry) => entry.listener !== listener),
+    );
+  }
+
+  dispatch(type) {
+    for (const entry of [...(this.listeners.get(type) || [])]) {
+      if (entry.once) this.removeEventListener(type, entry.listener);
+      entry.listener({ type });
+    }
+  }
+
+  listenerCount(type) {
+    return (this.listeners.get(type) || []).length;
+  }
+}
+
+class FakeAudioContext {
+  static instances = [];
+
+  constructor() {
+    this.state = 'running';
+    this.currentTime = 0;
+    this.sampleRate = 2;
+    this.destination = {};
+    this.listeners = new Map();
+    this.resumeCalls = 0;
+    this.suspendCalls = 0;
+    FakeAudioContext.instances.push(this);
+  }
+
+  addEventListener(type, listener) {
+    const listeners = this.listeners.get(type) || [];
+    listeners.push(listener);
+    this.listeners.set(type, listeners);
+  }
+
+  dispatch(type) {
+    for (const listener of this.listeners.get(type) || []) listener({ type });
+  }
+
+  createGain() {
+    return {
+      gain: {
+        value: 1,
+        setTargetAtTime() {},
+        setValueAtTime() {},
+        cancelScheduledValues() {},
+        linearRampToValueAtTime() {},
+        exponentialRampToValueAtTime() {},
+      },
+      connect: (node) => node,
+    };
+  }
+
+  createBuffer(_channels, length) {
+    return { getChannelData: () => new Float32Array(length) };
+  }
+
+  createBufferSource() {
+    return {
+      buffer: null,
+      loop: false,
+      playbackRate: { value: 1, setTargetAtTime() {} },
+      connect: (node) => node,
+      start() {},
+      stop() {},
+      addEventListener() {},
+    };
+  }
+
+  createBiquadFilter() {
+    return {
+      type: '',
+      frequency: { value: 0 },
+      Q: { value: 0 },
+      connect: (node) => node,
+    };
+  }
+
+  suspend() {
+    this.suspendCalls += 1;
+    return new Promise((resolve) => {
+      this.resolveSuspend = () => {
+        this.state = 'suspended';
+        resolve();
+        this.dispatch('statechange');
+      };
+    });
+  }
+
+  resume() {
+    this.resumeCalls += 1;
+    return new Promise((resolve) => {
+      this.resolveResume = () => {
+        this.state = 'running';
+        resolve();
+        this.dispatch('statechange');
+      };
+    });
+  }
+}
+
+describe('createAudio context recovery', () => {
+  let documentStub;
+
+  beforeEach(() => {
+    FakeAudioContext.instances = [];
+    documentStub = new FakeDocument();
+    vi.stubGlobal('AudioContext', FakeAudioContext);
+    vi.stubGlobal('document', documentStub);
+    vi.stubGlobal('fetch', async () => ({ ok: false }));
+    vi.stubGlobal('localStorage', {
+      getItem: () => null,
+      setItem() {},
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('resumes if resume is requested while suspend is still pending', async () => {
+    const audio = createAudio();
+    await audio.unlock();
+    const context = FakeAudioContext.instances[0];
+
+    const suspendPromise = audio.suspend();
+    const resumePromise = audio.resume();
+    context.resolveSuspend();
+    await Promise.resolve();
+    expect(context.resumeCalls).toBe(1);
+
+    context.resolveResume();
+    await Promise.all([suspendPromise, resumePromise]);
+    expect(context.state).toBe('running');
+  });
+
+  it('resumes an interrupted context once on the next user gesture', async () => {
+    const audio = createAudio();
+    await audio.unlock();
+    const context = FakeAudioContext.instances[0];
+    context.state = 'interrupted';
+    context.dispatch('statechange');
+    context.dispatch('statechange');
+
+    expect(documentStub.listenerCount('pointerdown')).toBe(1);
+    documentStub.dispatch('pointerdown');
+    expect(context.resumeCalls).toBe(1);
+    documentStub.dispatch('pointerdown');
+    expect(context.resumeCalls).toBe(1);
+
+    context.resolveResume();
+    expect(context.state).toBe('running');
+  });
+
+  it('selects playback audio session mode when available', async () => {
+    const audioSession = { type: 'auto' };
+    vi.stubGlobal('navigator', { audioSession });
+
+    await createAudio().unlock();
+
+    expect(audioSession.type).toBe('playback');
+  });
+});
 
 describe('getMusicGainTarget', () => {
   it('mutes the built-in track when Sound is off', () => {
