@@ -347,6 +347,7 @@ export function createRiderModel() {
   let assetStatus = { ready: false, reason: 'Assets have not been applied' };
   let crashState = null;
   let wavePoseActive = false;
+  let wavePoseTime = 0;
   let activeRiderId = 'rider-body';
 
   function setAssets({
@@ -764,7 +765,10 @@ export function createRiderModel() {
         : assetRiderMotion.worldToLocal(
           assetSteer.localToWorld(new THREE.Vector3(side * 0.215, 0.665, 0.385)),
         );
-      const waving = wavePoseActive && side > 0 && !crashing;
+      const waving = wavePoseActive
+        && side > 0
+        && !crashing
+        && activeRiderId !== 'rider-black';
       const waveOriginWorld = waving
         ? boneWorldPosition(riderBones.rightArm)
         : null;
@@ -783,12 +787,11 @@ export function createRiderModel() {
       const waveLength = waving
         ? handChains[index].firstLength + handChains[index].secondLength
         : 0;
-      const blackWavePose = activeRiderId === 'rider-black';
       const waveTargetWorld = waving
         ? waveOriginWorld.clone()
-          .addScaledVector(waveSideWorld, waveLength * (blackWavePose ? 0.25 : 0.50))
-          .addScaledVector(waveUpWorld, waveLength * (blackWavePose ? -0.05 : 0.48))
-          .addScaledVector(waveForwardWorld, waveLength * (blackWavePose ? 0.40 : 0.08))
+          .addScaledVector(waveSideWorld, waveLength * 0.50)
+          .addScaledVector(waveUpWorld, waveLength * 0.48)
+          .addScaledVector(waveForwardWorld, waveLength * 0.08)
         : gripLocal;
       const waveTargetLocal = waving
         ? assetRiderMotion.worldToLocal(waveTargetWorld.clone())
@@ -807,9 +810,9 @@ export function createRiderModel() {
       const handTarget = assetRiderMotion.localToWorld(smoothedGrip);
       const elbowPole = waving
         ? waveOriginWorld.clone()
-          .addScaledVector(waveSideWorld, waveLength * (blackWavePose ? 0.40 : 1))
-          .addScaledVector(waveUpWorld, -waveLength * (blackWavePose ? 1 : 0.6))
-          .addScaledVector(waveForwardWorld, waveLength * (blackWavePose ? 0.10 : 0.05))
+          .addScaledVector(waveSideWorld, waveLength)
+          .addScaledVector(waveUpWorld, -waveLength * 0.6)
+          .addScaledVector(waveForwardWorld, waveLength * 0.05)
         : assetRiderMotion.localToWorld(
           crashing
             ? new THREE.Vector3(side * 0.58, 0.9, 0.25)
@@ -818,7 +821,10 @@ export function createRiderModel() {
       solveTwoBone(root, handChains[index], handTarget, elbowPole);
     }
 
-    const headPitch = -(torsoPitch.value + pitchSpring.value);
+    const nod = wavePoseActive && activeRiderId === 'rider-black' && !crashState
+      ? 0.22 * Math.max(0, Math.sin(wavePoseTime * Math.PI * 2))
+      : 0;
+    const headPitch = -(torsoPitch.value + pitchSpring.value + nod);
     rotateBoneAroundWorldAxis(riderBones.head, lateralWorld, headPitch);
     rotateBoneAroundWorldAxis(riderBones.head, forwardWorld, 1.3 * bike.lean);
     root.updateMatrixWorld(true);
@@ -839,8 +845,9 @@ export function createRiderModel() {
       headlamp.visible = enabled;
     },
     setAssets,
-    setWavePose(active) {
+    setWavePose(active, time) {
       wavePoseActive = active;
+      wavePoseTime = time;
     },
     startCrash,
     resetCrash,
