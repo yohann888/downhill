@@ -50,6 +50,8 @@ class FakeAudioContext {
     this.resumeCalls = 0;
     this.suspendCalls = 0;
     this.callOrder = [];
+    this.startedBuffers = [];
+    this.gains = [];
     FakeAudioContext.instances.push(this);
   }
 
@@ -64,7 +66,7 @@ class FakeAudioContext {
   }
 
   createGain() {
-    return {
+    const gain = {
       gain: {
         value: 1,
         setTargetAtTime() {},
@@ -75,22 +77,29 @@ class FakeAudioContext {
       },
       connect: (node) => node,
     };
+    this.gains.push(gain);
+    return gain;
   }
 
   createBuffer(_channels, length) {
     return { getChannelData: () => new Float32Array(length) };
   }
 
+  decodeAudioData(data) {
+    return Promise.resolve({ name: data });
+  }
+
   createBufferSource() {
-    return {
+    const source = {
       buffer: null,
       loop: false,
       playbackRate: { value: 1, setTargetAtTime() {} },
       connect: (node) => node,
-      start() {},
+      start: () => this.startedBuffers.push(source.buffer),
       stop() {},
       addEventListener() {},
     };
+    return source;
   }
 
   createBiquadFilter() {
@@ -197,6 +206,29 @@ describe('createAudio context recovery', () => {
     expect(context.state).toBe('suspended');
   });
 
+  it('starts only one selected music source when the track changes during unlock', async () => {
+    let resolveLoFi;
+    vi.stubGlobal('fetch', async (url) => {
+      if (url.endsWith('music-lofi.mp3')) {
+        return new Promise((resolve) => {
+          resolveLoFi = () => resolve({ ok: true, arrayBuffer: async () => url });
+        });
+      }
+      return { ok: true, arrayBuffer: async () => url };
+    });
+
+    const audio = createAudio();
+    const unlockPromise = audio.unlock();
+    audio.setMusic('music-lofi');
+    await vi.waitFor(() => expect(resolveLoFi).toBeTypeOf('function'));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    resolveLoFi();
+    await unlockPromise;
+
+    const context = FakeAudioContext.instances[0];
+    expect(context.startedBuffers.filter((buffer) => buffer?.name === './assets/audio/music-lofi.mp3')).toHaveLength(1);
+  });
+
   it('selects playback audio session mode when available', async () => {
     const audioSession = { type: 'auto' };
     vi.stubGlobal('navigator', { audioSession });
@@ -204,6 +236,18 @@ describe('createAudio context recovery', () => {
     await createAudio().unlock();
 
     expect(audioSession.type).toBe('playback');
+  });
+
+  it('keeps the master gain muted when title audio unlocks', async () => {
+    vi.stubGlobal('localStorage', {
+      getItem: (key) => (key === 'downhill-muted' ? '1' : null),
+      setItem() {},
+    });
+
+    const audio = createAudio();
+    await audio.unlock();
+
+    expect(FakeAudioContext.instances[0].gains[0].gain.value).toBe(0);
   });
 });
 

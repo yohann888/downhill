@@ -24,11 +24,13 @@ export function createAudio() {
   let master = null;
   let musicGain = null;
   let musicSource = null;
+  let musicSourceVersion = -1;
   let rainNodes = null;
   let rainSelected = false;
   let previousMusic = 'music-ride';
   let youtubePlaying = false;
   let voiceSource = null;
+  let musicSwitchRequest = 0;
   const buffers = {};
   const loops = {};
   const loading = {};
@@ -64,8 +66,9 @@ export function createAudio() {
 
   async function switchMusic(name, version) {
     if (name === 'youtube') return;
+    const request = ++musicSwitchRequest;
     const buffer = await load(name);
-    if (!buffer || !ctx || version !== musicSelectionVersion || name !== selectedMusic) return;
+    if (!buffer || !ctx || request !== musicSwitchRequest || version !== musicSelectionVersion || name !== selectedMusic || musicSourceVersion === version) return;
     const now = ctx.currentTime;
     const previousSource = musicSource;
     const previousGain = musicGain;
@@ -84,6 +87,7 @@ export function createAudio() {
       previousSource.stop(now + 0.51);
     }
     musicSource = source;
+    musicSourceVersion = version;
     musicGain = gain;
     setMusicGain(voiceSource ? 0.1 : 0.25, 0.08);
   }

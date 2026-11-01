@@ -512,6 +512,13 @@ ui.volume.addEventListener('input', () => {
   youtubePlayer?.setVolume(Math.round(audio.volume * 100));
 });
 
+const firstGestureEvents = ['pointerdown', 'touchend', 'keydown'];
+function unlockAudioOnFirstGesture() {
+  for (const type of firstGestureEvents) document.removeEventListener(type, unlockAudioOnFirstGesture, true);
+  void audio.unlock();
+}
+for (const type of firstGestureEvents) document.addEventListener(type, unlockAudioOnFirstGesture, true);
+
 const keys = { left: false, right: false, throttle: false, brake: false, jump: false };
 let jumpQueued = false;
 const touchControls = document.querySelector('#touch');
