@@ -18,6 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictFloat, StrictInt, Valid
 from board import (
     COMMENTARY_GLOBAL_DAY,
     COMMENTARY_PER_IP_HOUR,
+    IPV6_SITE_MULTIPLIER,
     RUNS_GLOBAL_HOUR,
     RUNS_PER_IP_HOUR,
     TOP_SIZE,
@@ -86,18 +87,34 @@ def _public_run(item: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _client_ip(request: Request) -> str:
+def _client_buckets(request: Request) -> list[tuple[str, int]]:
     client_host = request.client.host if request.client else None
     try:
         address = ipaddress.ip_address(client_host)
-    except ValueError:
-        return "unknown"
+    except (TypeError, ValueError):
+        return [("unknown", 1)]
     if isinstance(address, ipaddress.IPv6Address):
         if address.ipv4_mapped is not None:
-            return str(address.ipv4_mapped)
-        network = ipaddress.ip_network(f"{address}/48", strict=False)
-        return f"{network.network_address}/48"
-    return str(address)
+            return [(str(address.ipv4_mapped), 1)]
+        net64 = ipaddress.ip_network(f"{address}/64", strict=False)
+        net48 = ipaddress.ip_network(f"{address}/48", strict=False)
+        return [
+            (f"{net64.network_address}/64", 1),
+            (f"{net48.network_address}/48", IPV6_SITE_MULTIPLIER),
+        ]
+    return [(str(address), 1)]
+
+
+def _consume_client(
+    kind: str,
+    buckets: list[tuple[str, int]],
+    period: str | int,
+    limit: int,
+) -> bool:
+    return all(
+        consume_slot(board, f"rl:{kind}:{identity}:{period}", limit * multiplier)
+        for identity, multiplier in buckets
+    )
 
 
 @web.get("/leaderboard")
@@ -129,10 +146,10 @@ async def post_run(request: Request) -> dict[str, Any]:
     duplicate = find_duplicate_rank(existing, run) is not None
 
     if not duplicate:
-        ip = _client_ip(request)
+        buckets = _client_buckets(request)
         now = time.time()
         hour = int(now // 3600)
-        if not consume_slot(board, f"rl:run:{ip}:{hour}", RUNS_PER_IP_HOUR) or not consume_slot(
+        if not _consume_client("run", buckets, hour, RUNS_PER_IP_HOUR) or not consume_slot(
             board, f"rl:run:all:{hour}", RUNS_GLOBAL_HOUR
         ):
             raise HTTPException(status_code=429, detail="Run limit reached")
@@ -186,12 +203,12 @@ async def _commentary_text(stats: dict[str, Any]) -> str:
     return " ".join(text.split())[:160].rstrip()
 
 
-async def _commentary_audio(text: str, ip: str) -> str | None:
+async def _commentary_audio(text: str, buckets: list[tuple[str, int]]) -> str | None:
     key = os.environ.get("ELEVENLABS_API_KEY")
     if not key:
         return None
     day = datetime.now(timezone.utc).date().isoformat()
-    if not consume_slot(board, f"rl:tts:{ip}:{day}", TTS_PER_IP_DAY) or not consume_slot(
+    if not _consume_client("tts", buckets, day, TTS_PER_IP_DAY) or not consume_slot(
         board, f"rl:tts:{day}", TTS_GLOBAL_DAY
     ):
         return None
@@ -238,11 +255,11 @@ async def post_commentary(request: Request) -> dict[str, Any]:
     except ValidationError as error:
         raise HTTPException(status_code=400, detail="Invalid commentary request") from error
 
-    ip = _client_ip(request)
+    buckets = _client_buckets(request)
     now = time.time()
     hour = int(now // 3600)
     day = datetime.now(timezone.utc).date().isoformat()
-    if not consume_slot(board, f"rl:cm:{ip}:{hour}", COMMENTARY_PER_IP_HOUR) or not consume_slot(
+    if not _consume_client("cm", buckets, hour, COMMENTARY_PER_IP_HOUR) or not consume_slot(
         board, f"rl:gemini:{day}", COMMENTARY_GLOBAL_DAY
     ):
         raise HTTPException(status_code=429, detail="Commentary limit reached")
@@ -253,7 +270,7 @@ async def post_commentary(request: Request) -> dict[str, Any]:
         text = await _commentary_text(stats)
     except HTTPException:
         raise
-    audio = await _commentary_audio(text, ip)
+    audio = await _commentary_audio(text, buckets)
     return {"text": text, "audio": audio}
 
 
