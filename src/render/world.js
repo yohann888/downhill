@@ -13,6 +13,51 @@ import {
 } from './otter.js';
 import { buildPickups } from './pickups.js';
 
+function patchShaderChunk(name, search, replacement, marker) {
+  const original = THREE.ShaderChunk[name];
+  if (typeof original !== 'string') {
+    throw new Error(`Missing THREE.ShaderChunk.${name}`);
+  }
+  if (original.includes(marker)) return;
+  if (!original.includes(search)) {
+    throw new Error(`Unable to patch THREE.ShaderChunk.${name}`);
+  }
+  const patched = original.replace(search, replacement);
+  if (patched === original || !patched.includes(marker)) {
+    throw new Error(`Failed to patch THREE.ShaderChunk.${name}`);
+  }
+  THREE.ShaderChunk[name] = patched;
+}
+
+patchShaderChunk(
+  'fog_pars_vertex',
+  'varying float vFogDepth;',
+  'varying float vFogDepth;\n\tvarying float vFogWorldY;',
+  'varying float vFogWorldY;',
+);
+patchShaderChunk(
+  'fog_vertex',
+  'vFogDepth = - mvPosition.z;',
+  'vFogDepth = - mvPosition.z;\n\tvFogWorldY = (inverse(viewMatrix) * mvPosition).y;',
+  'vFogWorldY = (inverse(viewMatrix) * mvPosition).y;',
+);
+patchShaderChunk(
+  'fog_pars_fragment',
+  'uniform vec3 fogColor;',
+  'uniform vec3 fogColor;\n\tvarying float vFogWorldY;\n\t#define HAZE_STRENGTH 0.35',
+  '#define HAZE_STRENGTH 0.35',
+);
+patchShaderChunk(
+  'fog_fragment',
+  'gl_FragColor.rgb = mix( gl_FragColor.rgb, fogColor, fogFactor );',
+  `float hazeBelow = clamp((cameraPosition.y - vFogWorldY) / 120.0, 0.0, 1.0);
+		float haze = HAZE_STRENGTH * hazeBelow * (1.0 - exp(-vFogDepth / 600.0));
+		fogFactor = max(fogFactor, haze);
+
+		gl_FragColor.rgb = mix( gl_FragColor.rgb, fogColor, fogFactor );`,
+  'float hazeBelow =',
+);
+
 const smoothstep = (a, b, v) => {
   const t = Math.min(1, Math.max(0, (v - a) / (b - a)));
   return t * t * (3 - 2 * t);
@@ -649,6 +694,7 @@ export function buildWorld(scene, renderer, terrain, obstacles, pickups = []) {
     new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false, fog: false }),
   );
   moon.position.copy(moonPosition);
+  moon.userData.noAO = true;
   moon.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), MOON_DIRECTION.clone().negate());
   moon.visible = false;
   const moonGlow = new THREE.Sprite(new THREE.SpriteMaterial({
@@ -814,6 +860,16 @@ export function buildWorld(scene, renderer, terrain, obstacles, pickups = []) {
 
   return {
     setTimeOfDay,
+    setShadowQuality(high) {
+      const size = high ? 4096 : 2048;
+      if (sun.shadow.mapSize.x === size && sun.shadow.mapSize.y === size) return;
+      sun.shadow.mapSize.set(size, size);
+      sun.shadow.map?.dispose();
+      sun.shadow.map = null;
+    },
+    lightDirection() {
+      return activeLightDirection.value;
+    },
     setRain(enabled, lowQuality = false) {
       rainEnabled = Boolean(enabled);
       rainLowQuality = Boolean(lowQuality);
