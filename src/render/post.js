@@ -63,7 +63,7 @@ const GodRaysShader = {
         sampleUv += stepUv;
         vec3 sampleColor = texture2D(tDiffuse, sampleUv).rgb;
         float luminance = dot(sampleColor, vec3(0.2126, 0.7152, 0.0722));
-        accumulated += max(luminance - 0.9, 0.0) * decay;
+        accumulated += max(luminance - 0.75, 0.0) * decay;
         decay *= 0.96;
       }
       gl_FragColor = vec4(color.rgb + tint * accumulated * strength, color.a);
@@ -116,9 +116,9 @@ export function createPost(renderer, scene, camera) {
   composer.setPixelRatio(renderer.getPixelRatio());
   composer.addPass(new RenderPass(scene, camera));
   const gtao = new GTAOPass(scene, camera, size.x, size.y);
-  gtao.blendIntensity = 0.8;
+  gtao.blendIntensity = 1.0;
   gtao.updateGtaoMaterial({
-    radius: 0.8,
+    radius: 1.2,
     distanceExponent: 1,
     thickness: 1,
     scale: 1,
@@ -134,6 +134,17 @@ export function createPost(renderer, scene, camera) {
     rings: 2,
     samples: 8,
   });
+  const hideFromAo = gtao._overrideVisibility.bind(gtao);
+  gtao._overrideVisibility = () => {
+    hideFromAo();
+    scene.traverse((object) => {
+      if (!object.visible) return;
+      if (object.isSprite || object.userData.noAO || object.material?.transparent) {
+        object.visible = false;
+        gtao._visibilityCache.push(object);
+      }
+    });
+  };
   composer.addPass(gtao);
   const godRays = new ShaderPass(GodRaysShader);
   composer.addPass(godRays);
@@ -157,9 +168,9 @@ export function createPost(renderer, scene, camera) {
         (sunPosition.x + 1) * 0.5,
         (sunPosition.y + 1) * 0.5,
       );
-      godRays.uniforms.strength.value = 0.35
+      godRays.uniforms.strength.value = 0.3
         * godRayStrength(cameraForward, lightDir)
-        * (isNight ? 0.6 : 1);
+        * (isNight ? 0 : 1);
       godRays.uniforms.tint.value.set(
         ...(isNight ? [0.55, 0.75, 1] : [1, 0.82, 0.58]),
       );

@@ -55,7 +55,7 @@ renderer.setPixelRatio(
 );
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = initialQuality < 2;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.type = THREE.PCFShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 0.9;
 
@@ -1964,9 +1964,10 @@ if (debug) {
   window.__terrain = terrain;
   window.__camera = camera;
   window.__scene = scene;
-  window.__captureFrame = (position, target) => {
+  window.__captureFrame = (position, target, speed = 0) => {
     camera.position.fromArray(position);
     camera.lookAt(new THREE.Vector3(...target));
+    post.update({ speed, lightDir: world.lightDirection(), isNight: timeMode === 'night' });
     renderCurrentFrame();
     return renderer.domElement.toDataURL('image/png');
   };

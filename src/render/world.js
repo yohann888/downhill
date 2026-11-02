@@ -694,6 +694,7 @@ export function buildWorld(scene, renderer, terrain, obstacles, pickups = []) {
     new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false, fog: false }),
   );
   moon.position.copy(moonPosition);
+  moon.userData.noAO = true;
   moon.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), MOON_DIRECTION.clone().negate());
   moon.visible = false;
   const moonGlow = new THREE.Sprite(new THREE.SpriteMaterial({
