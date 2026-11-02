@@ -208,14 +208,14 @@ def test_post_run_accepts_real_fixture_with_legacy_entries(monkeypatch):
 @pytest.mark.parametrize(
     ("client", "expected"),
     [
-        (("192.0.2.8", 1234), [("192.0.2.8", 1)]),
-        (("::ffff:192.0.2.8", 1234), [("192.0.2.8", 1)]),
+        (("192.0.2.8", 1234), ["192.0.2.8"]),
+        (("::ffff:192.0.2.8", 1234), ["192.0.2.8"]),
         (("2001:db8:1234:5678::1", 1234), [
-            ("2001:db8:1234:5678::/64", 1),
-            ("2001:db8:1234::/48", modal_api.IPV6_SITE_MULTIPLIER),
+            "2001:db8:1234:5678::/64",
+            "2001:db8:1234::/48",
         ]),
-        (("not-an-ip", 1234), [("unknown", 1)]),
-        (None, [("unknown", 1)]),
+        (("not-an-ip", 1234), ["unknown"]),
+        (None, ["unknown"]),
     ],
 )
 def test_client_buckets_normalize_request_client_only(client, expected):
@@ -233,14 +233,14 @@ def test_client_buckets_ipv6_layers():
 
     first_buckets = modal_api._client_buckets(first)
     assert first_buckets == [
-        ("2001:db8:1234:1::/64", 1),
-        ("2001:db8:1234::/48", 10),
+        "2001:db8:1234:1::/64",
+        "2001:db8:1234::/48",
     ]
     assert modal_api._client_buckets(same_64)[0] == first_buckets[0]
     assert modal_api._client_buckets(other_64)[0] != first_buckets[0]
     assert modal_api._client_buckets(other_64)[1] == first_buckets[1]
-    assert modal_api._client_buckets(ipv4) == [("192.0.2.8", 1)]
-    assert modal_api._client_buckets(mapped_ipv4) == [("192.0.2.8", 1)]
+    assert modal_api._client_buckets(ipv4) == ["192.0.2.8"]
+    assert modal_api._client_buckets(mapped_ipv4) == ["192.0.2.8"]
 
 
 def test_post_run_limits_client_ip_ignoring_forwarded_headers(monkeypatch):
@@ -265,10 +265,13 @@ def test_post_run_limits_client_ip_ignoring_forwarded_headers(monkeypatch):
 
 
 def test_run_limit_per_64_does_not_block_neighbour_64(monkeypatch):
-    monkeypatch.setattr(modal_api, "board", MemoryBoard())
+    board = MemoryBoard()
+    monkeypatch.setattr(modal_api, "board", board)
     monkeypatch.setattr(modal_api, "RUNS_PER_IP_HOUR", 1)
     first_64 = ("2001:db8:1234:1::1", 1234)
     neighbour_64 = ("2001:db8:1234:2::1", 1234)
+    third_64 = ("2001:db8:1234:3::1", 1234)
+    fourth_64 = ("2001:db8:1234:4::1", 1234)
 
     asyncio.run(modal_api.post_run(_request(_run_payload(30), client=first_64)))
     with pytest.raises(HTTPException) as error:
@@ -277,6 +280,11 @@ def test_run_limit_per_64_does_not_block_neighbour_64(monkeypatch):
 
     result = asyncio.run(modal_api.post_run(_request(_run_payload(32), client=neighbour_64)))
     assert any(entry["time"] == 32 for entry in result["top"])
+    asyncio.run(modal_api.post_run(_request(_run_payload(33), client=third_64)))
+
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(modal_api.post_run(_request(_run_payload(34), client=fourth_64)))
+    assert error.value.status_code == 429
 
 
 def test_post_run_enforces_global_limit(monkeypatch):
@@ -314,7 +322,7 @@ def test_commentary_audio_is_optional_without_elevenlabs_key(monkeypatch):
     monkeypatch.delenv("ELEVENLABS_API_KEY", raising=False)
     monkeypatch.setattr(modal_api, "board", MemoryBoard())
 
-    result = asyncio.run(modal_api._commentary_audio("Nice run", [("192.0.2.1", 1)]))
+    result = asyncio.run(modal_api._commentary_audio("Nice run", ["192.0.2.1"]))
 
     assert result is None
 
@@ -404,7 +412,7 @@ def test_commentary_limits_many_ipv6_64s_in_one_48(monkeypatch):
     board = MemoryBoard()
     monkeypatch.setattr(modal_api, "board", board)
     _stub_commentary(monkeypatch)
-    site_limit = modal_api.COMMENTARY_PER_IP_HOUR * modal_api.IPV6_SITE_MULTIPLIER
+    site_limit = modal_api.COMMENTARY_PER_IP_HOUR * modal_api.COMMENTARY_SITE_MULTIPLIER
 
     for index in range(site_limit):
         asyncio.run(modal_api.post_commentary(_request(
@@ -484,7 +492,7 @@ def test_tts_enforces_global_daily_limit_across_clients(monkeypatch):
     async def make_requests():
         for index in range(81):
             await modal_api._commentary_audio(
-                "Nice run", [(f"192.0.2.{index + 1}", 1)]
+                "Nice run", [f"192.0.2.{index + 1}"]
             )
 
     asyncio.run(make_requests())
@@ -500,7 +508,7 @@ def test_tts_enforces_per_client_daily_limit(monkeypatch):
 
     async def make_requests():
         for _ in range(modal_api.TTS_PER_IP_DAY + 5):
-            await modal_api._commentary_audio("Nice run", [("192.0.2.1", 1)])
+            await modal_api._commentary_audio("Nice run", ["192.0.2.1"])
 
     asyncio.run(make_requests())
 
@@ -529,18 +537,44 @@ def test_tts_limits_many_ipv6_64s_in_one_48(monkeypatch):
             if result["audio"] is not None:
                 audio_clips.append(result["audio"])
 
-        for _ in range(modal_api.TTS_PER_IP_DAY + 5):
-            await request(1)
-        for index in range(2, modal_api.IPV6_SITE_MULTIPLIER + 1):
-            for _ in range(modal_api.TTS_PER_IP_DAY):
-                await request(index)
-        await request(modal_api.IPV6_SITE_MULTIPLIER + 1)
+        for index in range(20):
+            await request(index)
 
     asyncio.run(make_requests())
 
-    site_limit = modal_api.TTS_PER_IP_DAY * modal_api.IPV6_SITE_MULTIPLIER
+    site_limit = modal_api.TTS_PER_IP_DAY * modal_api.TTS_SITE_MULTIPLIER
     assert len(calls) == site_limit
     assert len(audio_clips) == site_limit
+
+
+def test_three_48s_cannot_exhaust_tts_global(monkeypatch):
+    monkeypatch.setenv("ELEVENLABS_API_KEY", "test-key")
+    monkeypatch.setattr(modal_api, "ELEVENLABS_VOICE_ID", "voice")
+    board = MemoryBoard()
+    monkeypatch.setattr(modal_api, "board", board)
+
+    async def commentary_text(stats):
+        return "Nice run"
+
+    monkeypatch.setattr(modal_api, "_commentary_text", commentary_text)
+    calls = _stub_tts_client(monkeypatch)
+
+    async def make_requests():
+        for site in ("2001:db8:1000", "2001:db8:2000", "2001:db8:3000"):
+            for subnet in range(10):
+                await modal_api.post_commentary(_request(
+                    _commentary_payload(),
+                    path="/commentary",
+                    client=(f"{site}:{subnet:x}::1", 1234),
+                ))
+
+    asyncio.run(make_requests())
+
+    day = modal_api.datetime.now(modal_api.timezone.utc).date().isoformat()
+    global_slots = board.get(f"rl:tts:{day}:n", 0)
+    assert len(calls) == global_slots
+    assert global_slots <= 9
+    assert global_slots < modal_api.TTS_GLOBAL_DAY
 
 
 def test_tts_concurrent_calls_respect_per_client_limit(monkeypatch):
@@ -552,7 +586,7 @@ def test_tts_concurrent_calls_respect_per_client_limit(monkeypatch):
 
     async def make_requests():
         await asyncio.gather(*[
-            modal_api._commentary_audio("Nice run", [("192.0.2.1", 1)])
+            modal_api._commentary_audio("Nice run", ["192.0.2.1"])
             for _ in range(30)
         ])
 
