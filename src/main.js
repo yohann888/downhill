@@ -55,7 +55,7 @@ renderer.setPixelRatio(
 );
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = initialQuality < 2;
-renderer.shadowMap.type = THREE.PCFShadowMap;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 0.9;
 
@@ -67,8 +67,9 @@ const obstacles = createObstacles(terrain);
 let dodgeTracker = createDodgeTracker();
 const pickups = createPickups(terrain, obstacles);
 const world = buildWorld(scene, renderer, terrain, obstacles, pickups);
+world.setShadowQuality(initialQuality === 0);
 const post = queryParams.has('nopost')
-  ? { render: () => renderer.render(scene, camera), setSize() {} }
+  ? { render: () => renderer.render(scene, camera), setSize() {}, update() {} }
   : createPost(renderer, scene, camera);
 const model = createRiderModel();
 scene.add(model.root);
@@ -1745,6 +1746,7 @@ let qualityFrameCount = 0;
 function applyQualityLevel(level) {
   game.quality = level;
   renderer.shadowMap.enabled = level < 2;
+  world.setShadowQuality(level === 0);
   const pixelRatio = level >= 3
     ? 0.75
     : level >= 2
@@ -1863,6 +1865,11 @@ function frame(now) {
   audio.update(game.bike, input, game.mode === 'riding', paused ? 0 : dt, game.timeScale);
   updateCamera(paused ? 0 : dt);
   updateHud();
+  post.update({
+    speed: game.waveMode ? 0 : game.bike.v,
+    lightDir: world.lightDirection(),
+    isNight: timeMode === 'night',
+  });
   renderCurrentFrame();
   requestAnimationFrame(frame);
 }
