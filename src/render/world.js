@@ -292,7 +292,7 @@ function createFarHeight(terrain) {
 
 function buildRangeMesh(terrain, groundTextures) {
   const size = 7000;
-  const segments = 480;
+  const segments = 360;
   const geometry = new THREE.PlaneGeometry(size, size, segments, segments);
   geometry.rotateX(-Math.PI / 2);
   geometry.translate(0, 0, -terrain.courseLength * 0.75);
@@ -351,6 +351,7 @@ function buildRangeMesh(terrain, groundTextures) {
 
 const TREE_CHUNK_LENGTH = 50;
 const TREE_LOD_DISTANCE = 120;
+const OBSTACLE_DRAW_DISTANCE = 180;
 
 // The tree GLBs are quantized (KHR_mesh_quantization), which SimplifyModifier can't read directly.
 function floatGeometry(geometry) {
@@ -1003,7 +1004,12 @@ export function buildWorld(scene, renderer, terrain, obstacles, pickups = []) {
       obstacleGroup.userData.update(time);
       pickupModels.update(time);
       windTime.value = performance.now() / 1000;
-      if (cameraPosition) trees.userData.lod(cameraPosition.z);
+      if (cameraPosition) {
+        trees.userData.lod(cameraPosition.z);
+        for (const mesh of obstacleGroup.children) {
+          mesh.visible = Math.abs(mesh.position.z - cameraPosition.z) < OBSTACLE_DRAW_DISTANCE;
+        }
+      }
       groundCover.visible = showGroundCover;
       if (showGroundCover && cameraPosition) groundCover.userData.cull(cameraPosition.z);
       if (rainLowQuality !== Boolean(lowQuality)) {
