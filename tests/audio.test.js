@@ -82,7 +82,7 @@ class FakeAudioContext {
   }
 
   createBuffer(_channels, length) {
-    return { getChannelData: () => new Float32Array(length) };
+    return { getChannelData: () => new Float32Array(Math.max(1, Math.floor(length))) };
   }
 
   decodeAudioData(data) {
@@ -109,6 +109,20 @@ class FakeAudioContext {
       Q: { value: 0 },
       connect: (node) => node,
     };
+  }
+
+  createDynamicsCompressor() {
+    const param = () => ({ value: 0 });
+    this.limiter = {
+      threshold: param(), knee: param(), ratio: param(), attack: param(), release: param(),
+      connect: (node) => node,
+    };
+    return this.limiter;
+  }
+
+  createConvolver() {
+    this.convolver = { buffer: null, connect: (node) => node };
+    return this.convolver;
   }
 
   suspend() {
@@ -301,5 +315,27 @@ describe('getMusicGainTarget', () => {
       selectedMusic: 'youtube',
       youtubePlaying: false,
     })).toBe(0.1);
+  });
+});
+
+describe('createAudio mix bus', () => {
+  beforeEach(() => {
+    FakeAudioContext.instances = [];
+    vi.stubGlobal('AudioContext', FakeAudioContext);
+    vi.stubGlobal('document', new FakeDocument());
+    vi.stubGlobal('fetch', async () => ({ ok: false }));
+    vi.stubGlobal('localStorage', { getItem: () => null, setItem() {} });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('routes master through a limiter and builds a reverb impulse', async () => {
+    const audio = createAudio();
+    await audio.unlock();
+    const ctx = FakeAudioContext.instances[0];
+    expect(ctx.limiter.threshold.value).toBe(-6);
+    expect(ctx.convolver.buffer).not.toBeNull();
   });
 });

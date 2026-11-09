@@ -1,4 +1,5 @@
 import { parseYouTubeId } from './youtube.js';
+import { crashVariant, landingSound } from './sfx-mix.js';
 
 const BASE = './assets/audio/';
 const LOOPS = ['tire-gravel-loop', 'wind-loop', 'freewheel-loop', 'pedal-loop', 'forest-loop', 'brake-skid'];
@@ -31,6 +32,8 @@ export function createAudio() {
   let previousMusic = 'music-ride';
   let youtubePlaying = false;
   let voiceSource = null;
+  let reverbSend = null;
+  let noiseBuffer = null;
   const buffers = {};
   const loops = {};
   const loading = {};
@@ -118,15 +121,92 @@ export function createAudio() {
     loop.source.playbackRate.setTargetAtTime(rate, t, 0.1);
   }
 
-  function play(name, volume = 1) {
+  function connectOut(node, send = 0, pan = 0) {
+    let out = node;
+    if (pan && ctx.createStereoPanner) {
+      const panner = ctx.createStereoPanner();
+      panner.pan.value = pan;
+      out = node.connect(panner);
+    }
+    out.connect(master);
+    if (send > 0 && reverbSend) {
+      const sendGain = ctx.createGain();
+      sendGain.gain.value = send;
+      out.connect(sendGain).connect(reverbSend);
+    }
+  }
+
+  function play(name, volume = 1, { rate = 1, offset = 0, send = 0.1, pan = 0 } = {}) {
     const buffer = buffers[name];
     if (!ctx || !buffer) return;
     const source = ctx.createBufferSource();
     source.buffer = buffer;
+    source.playbackRate.value = rate;
     const gain = ctx.createGain();
     gain.gain.value = volume;
-    source.connect(gain).connect(master);
-    source.start();
+    connectOut(source.connect(gain), send, pan);
+    source.start(0, offset);
+  }
+
+  function createReverb() {
+    if (!ctx.createConvolver) return;
+    const seconds = 1.8;
+    const length = Math.floor(ctx.sampleRate * seconds);
+    const impulse = ctx.createBuffer(2, length, ctx.sampleRate);
+    for (let channel = 0; channel < 2; channel += 1) {
+      const data = impulse.getChannelData(channel);
+      for (let i = 0; i < length; i += 1) {
+        const t = i / length;
+        data[i] = (Math.random() * 2 - 1) * (1 - t) ** 3.2 * (t < 0.01 ? t / 0.01 : 1);
+      }
+    }
+    const convolver = ctx.createConvolver();
+    convolver.buffer = impulse;
+    const tone = ctx.createBiquadFilter();
+    tone.type = 'lowpass';
+    tone.frequency.value = 3200;
+    const wet = ctx.createGain();
+    wet.gain.value = 0.55;
+    reverbSend = ctx.createGain();
+    reverbSend.gain.value = 1;
+    reverbSend.connect(convolver).connect(tone).connect(wet).connect(master);
+  }
+
+  function playWhoosh({ pan = 0, volume = 0.3, rate = 1 }) {
+    if (!ctx || !noiseBuffer) return;
+    const start = ctx.currentTime;
+    const length = 0.34 / rate;
+    const source = ctx.createBufferSource();
+    source.buffer = noiseBuffer;
+    const band = ctx.createBiquadFilter();
+    band.type = 'bandpass';
+    band.Q.value = 1.1;
+    band.frequency.setValueAtTime(700 * rate, start);
+    band.frequency.exponentialRampToValueAtTime(2600 * rate, start + length * 0.35);
+    band.frequency.exponentialRampToValueAtTime(500 * rate, start + length);
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(volume, start + length * 0.35);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + length);
+    connectOut(source.connect(band).connect(gain), 0.15, pan);
+    source.start(start, Math.random());
+    source.stop(start + length + 0.05);
+  }
+
+  function playThump(amount) {
+    if (!ctx || amount <= 0) return;
+    const start = ctx.currentTime;
+    const oscillator = ctx.createOscillator();
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(95, start);
+    oscillator.frequency.exponentialRampToValueAtTime(38, start + 0.2);
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(0.55 * amount, start + 0.012);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.26);
+    oscillator.connect(gain).connect(master);
+    oscillator.start(start);
+    oscillator.stop(start + 0.3);
   }
 
   function playVoice(name) {
@@ -140,7 +220,7 @@ export function createAudio() {
     source.buffer = buffer;
     const gain = ctx.createGain();
     gain.gain.value = 0.9;
-    source.connect(gain).connect(master);
+    connectOut(source.connect(gain), 0.06);
     source.addEventListener('ended', () => {
       if (voiceSource === source) voiceSource = null;
     }, { once: true });
@@ -207,6 +287,7 @@ export function createAudio() {
     for (let index = 0; index < channel.length; index += 1) {
       channel[index] = Math.random() * 2 - 1;
     }
+    noiseBuffer = buffer;
     const highSource = ctx.createBufferSource();
     highSource.buffer = buffer;
     highSource.loop = true;
@@ -301,7 +382,18 @@ export function createAudio() {
       if (ctx.state !== 'running' && ctx.state !== 'closed') armResumeGesture();
       master = ctx.createGain();
       master.gain.value = muted ? 0 : volume;
-      master.connect(ctx.destination);
+      if (ctx.createDynamicsCompressor) {
+        const limiter = ctx.createDynamicsCompressor();
+        limiter.threshold.value = -6;
+        limiter.knee.value = 4;
+        limiter.ratio.value = 12;
+        limiter.attack.value = 0.003;
+        limiter.release.value = 0.2;
+        master.connect(limiter).connect(ctx.destination);
+      } else {
+        master.connect(ctx.destination);
+      }
+      createReverb();
       createRainNoise();
       unlockReady = (async () => {
         await Promise.all([...LOOPS, ...ONESHOTS].map(load));
@@ -417,17 +509,22 @@ export function createAudio() {
       if (name === 'pickup') playPickup(value);
       if (name === 'start') playVoice('vo-go');
       if (name === 'checkpoint') {
-        play('checkpoint', 0.5);
+        play('checkpoint', 0.5, { send: 0.2 });
         playVoice(value ? 'vo-clean' : 'vo-checkpoint');
       }
-      if (name === 'land') play('land', 0.8);
+      if (name === 'land') {
+        const landing = landingSound(value || 0);
+        play('land', landing.volume, landing);
+        playThump(landing.thump);
+      }
+      if (name === 'whoosh') playWhoosh(value);
       if (name === 'kicker') playVoice(value > 12 ? 'vo-send' : 'vo-air');
       if (name === 'crash') {
         const isRock = value === 'rock';
-        play(isRock ? 'otter-hit' : 'crash', 0.9);
+        play(isRock ? 'otter-hit' : 'crash', 0.9, crashVariant());
         playVoice(isRock ? 'vo-ottified' : 'vo-crash');
       }
-      if (name === 'finish') play('finish-cheer', 0.8);
+      if (name === 'finish') play('finish-cheer', 0.8, { send: 0.25 });
       if (name === 'best') playVoice('vo-best');
     },
   };
