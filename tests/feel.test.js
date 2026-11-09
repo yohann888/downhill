@@ -3,6 +3,7 @@ import {
   airTimeBonus,
   heightBonus,
   nextQualityLevel,
+  nextQualityStep,
   slowMoTarget,
 } from '../src/feel.js';
 
@@ -21,6 +22,18 @@ describe('nextQualityLevel', () => {
     expect(nextQualityLevel(45, 0)).toBe(0);
     expect(nextQualityLevel(30, 2)).toBe(3);
     expect(nextQualityLevel(10, 3)).toBe(3);
+  });
+});
+
+describe('nextQualityStep', () => {
+  it('steps HiDPI resolution down to 1x before dropping a quality level', () => {
+    expect(nextQualityStep(30, 0, 0, 2)).toEqual({ level: 0, ratioStep: 1 });
+    expect(nextQualityStep(30, 0, 1, 2)).toEqual({ level: 0, ratioStep: 2 });
+    expect(nextQualityStep(30, 0, 2, 2)).toEqual({ level: 1, ratioStep: 2 });
+    expect(nextQualityStep(30, 0, 0, 1.25)).toEqual({ level: 0, ratioStep: 2 });
+    expect(nextQualityStep(30, 0, 0, 1)).toEqual({ level: 1, ratioStep: 0 });
+    expect(nextQualityStep(60, 0, 0, 2)).toEqual({ level: 0, ratioStep: 0 });
+    expect(nextQualityStep(30, 1, 0, 2)).toEqual({ level: 2, ratioStep: 0 });
   });
 });
 

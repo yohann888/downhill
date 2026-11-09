@@ -117,12 +117,15 @@ export function createPost(renderer, scene, camera) {
   composer.addPass(new RenderPass(scene, camera));
   const gtao = new GTAOPass(scene, camera, size.x, size.y);
   gtao.blendIntensity = 1.0;
+  const setGtaoSize = gtao.setSize.bind(gtao);
+  gtao.setSize = (width, height) => setGtaoSize(Math.max(1, Math.round(width / 2)), Math.max(1, Math.round(height / 2)));
+  gtao.setSize(size.x * renderer.getPixelRatio(), size.y * renderer.getPixelRatio());
   gtao.updateGtaoMaterial({
     radius: 1.2,
     distanceExponent: 1,
     thickness: 1,
     scale: 1,
-    samples: 12,
+    samples: 8,
     distanceFallOff: 1,
     screenSpaceRadius: false,
   });

@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { createRandom } from '../world/noise.js';
 
 const CHUNK_LENGTH = 40;
+const COVER_AHEAD = 90;
+const COVER_BEHIND = 25;
 const GRASS_HEIGHT = 0.6;
 const FERN_HEIGHT = 0.45;
 
@@ -157,6 +159,12 @@ function coverMaterial(key, height, amplitude) {
   );
 }
 
+export function chunkVisible(chunk, cameraZ, ahead = COVER_AHEAD, behind = COVER_BEHIND) {
+  const nearS = chunk * CHUNK_LENGTH;
+  const cameraS = -cameraZ;
+  return nearS + CHUNK_LENGTH >= cameraS - behind && nearS <= cameraS + ahead;
+}
+
 export function buildGroundCover(terrain) {
   const group = new THREE.Group();
   const kinds = {
@@ -190,7 +198,12 @@ export function buildGroundCover(terrain) {
     mesh.instanceColor.needsUpdate = true;
     mesh.computeBoundingSphere();
     mesh.receiveShadow = true;
+    mesh.userData.chunk = Number(key.split(':')[1]);
+    mesh.userData.noAO = true;
     group.add(mesh);
   }
+  group.userData.cull = (cameraZ) => {
+    for (const mesh of group.children) mesh.visible = chunkVisible(mesh.userData.chunk, cameraZ);
+  };
   return group;
 }

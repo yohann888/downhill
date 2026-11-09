@@ -17,7 +17,8 @@ import { createPost } from './render/post.js';
 import {
   airTimeBonus,
   heightBonus,
-  nextQualityLevel,
+  nextQualityStep,
+  LEVEL0_PIXEL_RATIOS,
   slowMoTarget,
 } from './feel.js';
 import { getCommentary, getLeaderboard, postRun } from './api.js';
@@ -52,7 +53,7 @@ let timeMode = ['day', 'night'].includes(requestedTime)
 const canvas = document.getElementById('game');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(
-  initialQuality >= 3 ? 0.75 : initialQuality >= 2 ? 1 : Math.min(window.devicePixelRatio, 2),
+  initialQuality >= 3 ? 0.75 : initialQuality >= 2 ? 1 : Math.min(window.devicePixelRatio, LEVEL0_PIXEL_RATIOS[0]),
 );
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = initialQuality < 2;
@@ -1749,6 +1750,8 @@ let last = performance.now();
 let assetsReady = false;
 let qualityWindowElapsed = 0;
 let qualityFrameCount = 0;
+let qualityWarmupWindows = 1;
+let pixelRatioStep = 0;
 
 function applyQualityLevel(level) {
   game.quality = level;
@@ -1758,7 +1761,7 @@ function applyQualityLevel(level) {
     ? 0.75
     : level >= 2
       ? 1
-      : Math.min(window.devicePixelRatio, 2);
+      : Math.min(window.devicePixelRatio, LEVEL0_PIXEL_RATIOS[pixelRatioStep]);
   if (renderer.getPixelRatio() !== pixelRatio) {
     renderer.setPixelRatio(pixelRatio);
     renderer.setSize(window.innerWidth, window.innerHeight);
@@ -1768,13 +1771,25 @@ function applyQualityLevel(level) {
 
 function updateAutoQuality(realDt) {
   if (!autoQualityEnabled || !assetsReady) return;
+  if (realDt > 0.5) {
+    qualityWindowElapsed = 0;
+    qualityFrameCount = 0;
+    return;
+  }
   qualityWindowElapsed += realDt;
   qualityFrameCount += 1;
   if (qualityWindowElapsed < 3) return;
   const avgFps = qualityFrameCount / qualityWindowElapsed;
   game.qualityFps = avgFps;
-  const nextLevel = nextQualityLevel(avgFps, game.quality);
-  if (nextLevel !== game.quality) applyQualityLevel(nextLevel);
+  if (qualityWarmupWindows > 0) {
+    qualityWarmupWindows -= 1;
+  } else {
+    const step = nextQualityStep(avgFps, game.quality, pixelRatioStep, window.devicePixelRatio);
+    if (step.ratioStep !== pixelRatioStep || step.level !== game.quality) {
+      pixelRatioStep = step.ratioStep;
+      applyQualityLevel(step.level);
+    }
+  }
   qualityWindowElapsed = 0;
   qualityFrameCount = 0;
 }
@@ -1799,6 +1814,28 @@ function updateTimeScale(realDt) {
   game.timeScale += Math.max(-maxChange, Math.min(maxChange, effectiveTarget - game.timeScale));
 }
 
+const fpsMeter = queryParams.has('fps') ? document.createElement('div') : null;
+let fpsMeterElapsed = 0;
+let fpsMeterFrames = 0;
+if (fpsMeter) {
+  fpsMeter.style.cssText = 'position:fixed;top:8px;left:8px;z-index:9999;padding:4px 8px;'
+    + 'font:12px monospace;color:#fff;background:rgba(0,0,0,0.6);border-radius:4px;pointer-events:none';
+  document.body.appendChild(fpsMeter);
+  renderer.info.autoReset = false;
+}
+
+function updateFpsMeter(realDt) {
+  if (!fpsMeter) return;
+  fpsMeterElapsed += realDt;
+  fpsMeterFrames += 1;
+  if (fpsMeterElapsed < 0.5) return;
+  fpsMeter.textContent = `${Math.round(fpsMeterFrames / fpsMeterElapsed)} fps | quality ${game.quality} | `
+    + `res ${renderer.getPixelRatio()}x | ${renderer.info.render.calls} draws | `
+    + `${Math.round(renderer.info.render.triangles / 1000)}k tris`;
+  fpsMeterElapsed = 0;
+  fpsMeterFrames = 0;
+}
+
 function renderCurrentFrame() {
   if (game.quality >= 1) renderer.render(scene, camera);
   else post.render();
@@ -1808,6 +1845,8 @@ function frame(now) {
   const frameDt = Math.max(0, (now - last) / 1000);
   const dt = Math.min(0.1, frameDt);
   last = now;
+  updateFpsMeter(frameDt);
+  if (fpsMeter) renderer.info.reset();
   const paused = game.mode === 'paused';
   if (!paused) {
     updateAutoQuality(frameDt);
@@ -1867,7 +1906,7 @@ function frame(now) {
     ghostModel.root.visible = false;
   }
   world.followSun(model.root.position);
-  world.update(game.time, camera.position, game.bike.v, game.quality >= 2);
+  world.update(game.time, camera.position, game.bike.v, game.quality >= 2, game.quality < 3);
   dust.update(game.bike, game.mode === 'riding', paused ? 0 : dt);
   audio.update(game.bike, input, game.mode === 'riding', paused ? 0 : dt, game.timeScale, offTrailAmount(terrain, game.bike.x, game.bike.z));
   updateCamera(paused ? 0 : dt);
