@@ -18,6 +18,7 @@ import {
   airTimeBonus,
   heightBonus,
   nextQualityStep,
+  LEVEL0_PIXEL_RATIOS,
   slowMoTarget,
 } from './feel.js';
 import { getCommentary, getLeaderboard, postRun } from './api.js';
@@ -52,7 +53,7 @@ let timeMode = ['day', 'night'].includes(requestedTime)
 const canvas = document.getElementById('game');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(
-  initialQuality >= 3 ? 0.75 : initialQuality >= 2 ? 1 : Math.min(window.devicePixelRatio, 1.5),
+  initialQuality >= 3 ? 0.75 : initialQuality >= 2 ? 1 : Math.min(window.devicePixelRatio, LEVEL0_PIXEL_RATIOS[0]),
 );
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = initialQuality < 2;
@@ -1750,9 +1751,7 @@ let assetsReady = false;
 let qualityWindowElapsed = 0;
 let qualityFrameCount = 0;
 let qualityWarmupWindows = 1;
-let pixelRatioReduced = false;
-const LEVEL0_PIXEL_RATIO = 1.5;
-const LEVEL0_REDUCED_PIXEL_RATIO = 1.25;
+let pixelRatioStep = 0;
 
 function applyQualityLevel(level) {
   game.quality = level;
@@ -1762,7 +1761,7 @@ function applyQualityLevel(level) {
     ? 0.75
     : level >= 2
       ? 1
-      : Math.min(window.devicePixelRatio, pixelRatioReduced ? LEVEL0_REDUCED_PIXEL_RATIO : LEVEL0_PIXEL_RATIO);
+      : Math.min(window.devicePixelRatio, LEVEL0_PIXEL_RATIOS[pixelRatioStep]);
   if (renderer.getPixelRatio() !== pixelRatio) {
     renderer.setPixelRatio(pixelRatio);
     renderer.setSize(window.innerWidth, window.innerHeight);
@@ -1785,9 +1784,11 @@ function updateAutoQuality(realDt) {
   if (qualityWarmupWindows > 0) {
     qualityWarmupWindows -= 1;
   } else {
-    const step = nextQualityStep(avgFps, game.quality, pixelRatioReduced, window.devicePixelRatio);
-    if (step.reducePixelRatio) pixelRatioReduced = true;
-    if (step.reducePixelRatio || step.level !== game.quality) applyQualityLevel(step.level);
+    const step = nextQualityStep(avgFps, game.quality, pixelRatioStep, window.devicePixelRatio);
+    if (step.ratioStep !== pixelRatioStep || step.level !== game.quality) {
+      pixelRatioStep = step.ratioStep;
+      applyQualityLevel(step.level);
+    }
   }
   qualityWindowElapsed = 0;
   qualityFrameCount = 0;
