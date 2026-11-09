@@ -18,7 +18,7 @@ import {
   airTimeBonus,
   heightBonus,
   nextQualityStep,
-  LEVEL0_PIXEL_RATIOS,
+  LEVEL0_STEPS,
   slowMoTarget,
 } from './feel.js';
 import { getCommentary, getLeaderboard, postRun } from './api.js';
@@ -40,7 +40,8 @@ const RESPAWN_DELAY = 1.6;
 const queryParams = new URLSearchParams(window.location.search);
 const qualityMode = queryParams.get('quality');
 const initialQuality = qualityMode === 'low' ? 3 : 0;
-const autoQualityEnabled = qualityMode !== 'high';
+const benchMode = queryParams.has('bench');
+const autoQualityEnabled = qualityMode !== 'high' && !benchMode;
 const debug = queryParams.has('debug');
 const requestedTime = queryParams.get('time');
 const storedTime = localStorage.getItem('downhill.time');
@@ -53,7 +54,7 @@ let timeMode = ['day', 'night'].includes(requestedTime)
 const canvas = document.getElementById('game');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(
-  initialQuality >= 3 ? 0.75 : initialQuality >= 2 ? 1 : Math.min(window.devicePixelRatio, LEVEL0_PIXEL_RATIOS[0]),
+  initialQuality >= 3 ? 0.75 : initialQuality >= 2 ? 1 : Math.min(window.devicePixelRatio, LEVEL0_STEPS[0].ratio),
 );
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = initialQuality < 2;
@@ -72,7 +73,7 @@ const pickups = createPickups(terrain, obstacles);
 const world = buildWorld(scene, renderer, terrain, obstacles, pickups);
 world.setShadowQuality(initialQuality === 0);
 const post = queryParams.has('nopost')
-  ? { render: () => renderer.render(scene, camera), setSize() {}, update() {} }
+  ? { render: () => renderer.render(scene, camera), setSize() {}, setAO() {}, setEffects() {}, update() {} }
   : createPost(renderer, scene, camera);
 const model = createRiderModel();
 scene.add(model.root);
@@ -1751,7 +1752,7 @@ let assetsReady = false;
 let qualityWindowElapsed = 0;
 let qualityFrameCount = 0;
 let qualityWarmupWindows = 1;
-let pixelRatioStep = 0;
+let level0Step = 0;
 
 function applyQualityLevel(level) {
   game.quality = level;
@@ -1761,7 +1762,8 @@ function applyQualityLevel(level) {
     ? 0.75
     : level >= 2
       ? 1
-      : Math.min(window.devicePixelRatio, LEVEL0_PIXEL_RATIOS[pixelRatioStep]);
+      : Math.min(window.devicePixelRatio, LEVEL0_STEPS[level0Step].ratio);
+  post.setAO(LEVEL0_STEPS[level0Step].ao);
   if (renderer.getPixelRatio() !== pixelRatio) {
     renderer.setPixelRatio(pixelRatio);
     renderer.setSize(window.innerWidth, window.innerHeight);
@@ -1784,10 +1786,11 @@ function updateAutoQuality(realDt) {
   if (qualityWarmupWindows > 0) {
     qualityWarmupWindows -= 1;
   } else {
-    const step = nextQualityStep(avgFps, game.quality, pixelRatioStep, window.devicePixelRatio);
-    if (step.ratioStep !== pixelRatioStep || step.level !== game.quality) {
-      pixelRatioStep = step.ratioStep;
+    const step = nextQualityStep(avgFps, game.quality, level0Step, window.devicePixelRatio);
+    if (step.level0Step !== level0Step || step.level !== game.quality) {
+      level0Step = step.level0Step;
       applyQualityLevel(step.level);
+      qualityLog.push(`${Math.round(avgFps)} fps -> ${qualityLabel()}`);
     }
   }
   qualityWindowElapsed = 0;
@@ -1814,14 +1817,69 @@ function updateTimeScale(realDt) {
   game.timeScale += Math.max(-maxChange, Math.min(maxChange, effectiveTarget - game.timeScale));
 }
 
-const fpsMeter = queryParams.has('fps') ? document.createElement('div') : null;
+const fpsMeter = queryParams.has('fps') || benchMode ? document.createElement('div') : null;
 let fpsMeterElapsed = 0;
 let fpsMeterFrames = 0;
 if (fpsMeter) {
   fpsMeter.style.cssText = 'position:fixed;top:8px;left:8px;z-index:9999;padding:4px 8px;'
-    + 'font:12px monospace;color:#fff;background:rgba(0,0,0,0.6);border-radius:4px;pointer-events:none';
+    + 'font:12px monospace;color:#fff;background:rgba(0,0,0,0.6);border-radius:4px;pointer-events:none;white-space:pre';
   document.body.appendChild(fpsMeter);
   renderer.info.autoReset = false;
+}
+
+const qualityLog = [];
+
+// ?bench: cycle render settings during a ride (1x unless noted) and log the fps of each.
+const BENCH_SETTLE = 0.75;
+const BENCH_MEASURE = 3;
+const BENCH_FULL = { quality: 0, ao: true, shadow4k: true, samples: 0, fxaa: true, bloom: true, godRays: true };
+const BENCH_CONFIGS = [
+  { label: 'q0 full', ...BENCH_FULL },
+  { label: 'q0 full 1.25x', ...BENCH_FULL, step: 1 },
+  { label: 'q0 full 1.5x', ...BENCH_FULL, step: 0 },
+  { label: 'q0 no AO', ...BENCH_FULL, ao: false },
+  { label: '  + no bloom', ...BENCH_FULL, ao: false, bloom: false },
+  { label: '  + no god rays', ...BENCH_FULL, ao: false, bloom: false, godRays: false },
+  { label: 'q0 no FXAA', ...BENCH_FULL, fxaa: false },
+  { label: 'q0 old MSAA 4x', ...BENCH_FULL, samples: 4, fxaa: false },
+  { label: 'q1 (no post)', ...BENCH_FULL, quality: 1, shadow4k: false },
+];
+let benchIndex = -1;
+let benchElapsed = 0;
+let benchFrames = 0;
+
+function applyBenchConfig(index) {
+  benchIndex = index;
+  benchElapsed = 0;
+  benchFrames = 0;
+  const config = BENCH_CONFIGS[index];
+  if (!config) return;
+  level0Step = config.step ?? 2;
+  applyQualityLevel(config.quality);
+  world.setShadowQuality(config.shadow4k);
+  post.setEffects(config);
+}
+
+function updateBench(realDt) {
+  if (!benchMode || !assetsReady || game.mode !== 'riding' || realDt > 0.5) return;
+  if (benchIndex >= BENCH_CONFIGS.length) return;
+  if (benchIndex === -1) {
+    applyBenchConfig(0);
+    return;
+  }
+  benchElapsed += realDt;
+  if (benchElapsed < BENCH_SETTLE) return;
+  benchFrames += 1;
+  if (benchElapsed < BENCH_SETTLE + BENCH_MEASURE) return;
+  const fps = benchFrames / (benchElapsed - BENCH_SETTLE);
+  qualityLog.push(`${BENCH_CONFIGS[benchIndex].label}: ${Math.round(fps)} fps`);
+  applyBenchConfig(benchIndex + 1);
+  if (benchIndex >= BENCH_CONFIGS.length) qualityLog.push('bench done');
+}
+
+function qualityLabel() {
+  const noAO = game.quality === 0 && !LEVEL0_STEPS[level0Step].ao;
+  return `q${game.quality}${noAO ? ' no AO' : ''} ${renderer.getPixelRatio()}x`;
 }
 
 function updateFpsMeter(realDt) {
@@ -1829,9 +1887,10 @@ function updateFpsMeter(realDt) {
   fpsMeterElapsed += realDt;
   fpsMeterFrames += 1;
   if (fpsMeterElapsed < 0.5) return;
-  fpsMeter.textContent = `${Math.round(fpsMeterFrames / fpsMeterElapsed)} fps | quality ${game.quality} | `
+  fpsMeter.textContent = `${Math.round(fpsMeterFrames / fpsMeterElapsed)} fps | quality ${game.quality}${game.quality === 0 && !LEVEL0_STEPS[level0Step].ao ? ' (no AO)' : ''} | `
     + `res ${renderer.getPixelRatio()}x | ${renderer.info.render.calls} draws | `
-    + `${Math.round(renderer.info.render.triangles / 1000)}k tris`;
+    + `${Math.round(renderer.info.render.triangles / 1000)}k tris`
+    + qualityLog.map((entry) => `\n${entry}`).join('');
   fpsMeterElapsed = 0;
   fpsMeterFrames = 0;
 }
@@ -1850,6 +1909,7 @@ function frame(now) {
   const paused = game.mode === 'paused';
   if (!paused) {
     updateAutoQuality(frameDt);
+    updateBench(frameDt);
     updateTimeScale(frameDt);
     accumulator += dt * game.timeScale;
   } else {

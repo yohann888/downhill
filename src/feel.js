@@ -6,17 +6,24 @@ export function nextQualityLevel(avgFps, level) {
   return avgFps < 45 && level < 3 ? level + 1 : level;
 }
 
-export const LEVEL0_PIXEL_RATIOS = [1.5, 1.25, 1];
+// Quality 0 sub-steps, cheapest last: trade HiDPI sharpness, then ambient occlusion, before dropping effects.
+export const LEVEL0_STEPS = [
+  { ratio: 1.5, ao: true },
+  { ratio: 1.25, ao: true },
+  { ratio: 1, ao: true },
+  { ratio: 1, ao: false },
+];
 
-// On a slow window, first trade sharpness on HiDPI screens before dropping effects.
-export function nextQualityStep(avgFps, level, ratioStep, devicePixelRatio) {
+export function nextQualityStep(avgFps, level, level0Step, devicePixelRatio) {
   const nextLevel = nextQualityLevel(avgFps, level);
   if (nextLevel !== level && level === 0) {
-    const current = Math.min(devicePixelRatio, LEVEL0_PIXEL_RATIOS[ratioStep]);
-    const lower = LEVEL0_PIXEL_RATIOS.findIndex((ratio, i) => i > ratioStep && ratio < current);
-    if (lower !== -1) return { level, ratioStep: lower };
+    const current = LEVEL0_STEPS[level0Step];
+    const currentRatio = Math.min(devicePixelRatio, current.ratio);
+    const lower = LEVEL0_STEPS.findIndex((step, i) => i > level0Step
+      && (Math.min(devicePixelRatio, step.ratio) < currentRatio || (current.ao && !step.ao)));
+    if (lower !== -1) return { level, level0Step: lower };
   }
-  return { level: nextLevel, ratioStep };
+  return { level: nextLevel, level0Step };
 }
 
 export function airTimeBonus(airTime) {

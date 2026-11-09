@@ -5,6 +5,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
+import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader.js';
 
 const GradeShader = {
   uniforms: {
@@ -111,7 +112,7 @@ export function godRayStrength(forward, lightDir) {
 
 export function createPost(renderer, scene, camera) {
   const size = renderer.getSize(new THREE.Vector2());
-  const target = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: 4 });
+  const target = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: 0 });
   const composer = new EffectComposer(renderer, target);
   composer.setPixelRatio(renderer.getPixelRatio());
   composer.addPass(new RenderPass(scene, camera));
@@ -158,11 +159,33 @@ export function createPost(renderer, scene, camera) {
   speedBlur.enabled = false;
   composer.addPass(speedBlur);
   composer.addPass(new ShaderPass(GradeShader));
+  // MSAA on the half-float target is very slow on Apple GPUs in Chrome; FXAA is a single cheap pass.
+  const fxaa = new ShaderPass(FXAAShader);
+  composer.addPass(fxaa);
+  const resize = (w, h) => {
+    const pixelRatio = renderer.getPixelRatio();
+    composer.setPixelRatio(pixelRatio);
+    composer.setSize(w, h);
+    fxaa.uniforms.resolution.value.set(1 / (w * pixelRatio), 1 / (h * pixelRatio));
+  };
+  resize(size.x, size.y);
   const cameraForward = new THREE.Vector3();
   const sunPosition = new THREE.Vector3();
   return {
     render: () => composer.render(),
-    setSize: (w, h) => composer.setSize(w, h),
+    setSize: resize,
+    setAO: (enabled) => { gtao.enabled = enabled; },
+    setEffects({ ao, bloom: bloomOn, godRays: godRaysOn, samples, fxaa: fxaaOn }) {
+      gtao.enabled = ao;
+      fxaa.enabled = fxaaOn;
+      bloom.enabled = bloomOn;
+      godRays.enabled = godRaysOn;
+      for (const rt of [composer.renderTarget1, composer.renderTarget2]) {
+        if (rt.samples === samples) continue;
+        rt.samples = samples;
+        rt.dispose();
+      }
+    },
     update({ speed, lightDir, isNight }) {
       camera.updateMatrixWorld();
       camera.getWorldDirection(cameraForward);
