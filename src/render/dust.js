@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { G } from '../physics/constants.js';
 
-const DUST_COUNT = 400;
+const DUST_COUNT = 700;
 const GRAVEL_COUNT = 300;
 const LEAF_COUNT = 200;
 const LEAF_BURST_SIZE = 40;
@@ -11,6 +11,15 @@ const SKID_MARK_LIFETIME = 8;
 const SKID_MARK_INTERVAL = 0.05;
 
 const clamp01 = (value) => Math.max(0, Math.min(1, value));
+
+export function roostAmount(bike) {
+  if (bike.airborne || bike.crashed) return 0;
+  return clamp01((bike.aLat - 4.5) / 3) * clamp01((bike.v - 7) / 6);
+}
+
+export function landingPuffCount(impact) {
+  return Math.round(8 + clamp01((impact - 2) / 9) * 90);
+}
 
 export function createDust(scene, terrain) {
   const positions = new Float32Array(DUST_COUNT * 3);
@@ -40,6 +49,7 @@ export function createDust(scene, terrain) {
   scene.add(points);
   let cursor = 0;
   let carry = 0;
+  let roostCarry = 0;
   for (let i = 0; i < DUST_COUNT; i += 1) positions[i * 3 + 1] = -1e5;
 
   const gravelGeometry = new THREE.DodecahedronGeometry(1, 0);
@@ -206,7 +216,35 @@ export function createDust(scene, terrain) {
   let skidMarkCursor = 0;
   let skidMarkCarry = 0;
 
+  const spawnDust = (x, y, z, vx, vy, vz, lifetime) => {
+    const i = cursor;
+    cursor = (cursor + 1) % DUST_COUNT;
+    positions[i * 3] = x;
+    positions[i * 3 + 1] = y;
+    positions[i * 3 + 2] = z;
+    velocities[i * 3] = vx;
+    velocities[i * 3 + 1] = vy;
+    velocities[i * 3 + 2] = vz;
+    life[i] = lifetime;
+  };
+
   return {
+    landingPuff(bike, impact) {
+      const strength = clamp01((impact - 2) / 9);
+      for (let count = landingPuffCount(impact); count > 0; count -= 1) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = (1 + Math.random() * 2) * (0.6 + strength * 1.6);
+        spawnDust(
+          bike.x + Math.cos(angle) * 0.3,
+          bike.y + 0.05,
+          bike.z + Math.sin(angle) * 0.3,
+          Math.cos(angle) * speed,
+          0.2 + Math.random() * (0.6 + strength),
+          Math.sin(angle) * speed,
+          0.8 + Math.random() * 0.8,
+        );
+      }
+    },
     leafBurst(hit) {
       const groundY = terrain.heightAt(hit.x, hit.z);
       for (let count = 0; count < LEAF_BURST_SIZE; count += 1) {
@@ -244,21 +282,38 @@ export function createDust(scene, terrain) {
     update(bike, riding, dt) {
       const grounded = riding && !bike.airborne && !bike.crashed;
       const skid = grounded ? clamp01(bike.skid || 0) : 0;
+      const roost = riding ? roostAmount(bike) : 0;
       const rate = grounded ? Math.max(0, bike.v - 4) * 3 + skid * 100 : 0;
       carry += rate * dt;
       const fx = Math.sin(bike.heading);
       const fz = -Math.cos(bike.heading);
       while (carry >= 1) {
         carry -= 1;
-        const i = cursor;
-        cursor = (cursor + 1) % DUST_COUNT;
-        positions[i * 3] = bike.x - fx * 0.6 + (Math.random() - 0.5) * 0.3;
-        positions[i * 3 + 1] = bike.y + 0.08;
-        positions[i * 3 + 2] = bike.z - fz * 0.6 + (Math.random() - 0.5) * 0.3;
-        velocities[i * 3] = -fx * bike.v * 0.15 + (Math.random() - 0.5) * 1.2;
-        velocities[i * 3 + 1] = 0.4 + Math.random() * 0.9;
-        velocities[i * 3 + 2] = -fz * bike.v * 0.15 + (Math.random() - 0.5) * 1.2;
-        life[i] = 0.9 + Math.random() * 0.6;
+        spawnDust(
+          bike.x - fx * 0.6 + (Math.random() - 0.5) * 0.3,
+          bike.y + 0.08,
+          bike.z - fz * 0.6 + (Math.random() - 0.5) * 0.3,
+          -fx * bike.v * 0.15 + (Math.random() - 0.5) * 1.2,
+          0.4 + Math.random() * 0.9,
+          -fz * bike.v * 0.15 + (Math.random() - 0.5) * 1.2,
+          0.9 + Math.random() * 0.6,
+        );
+      }
+      const outX = -Math.cos(bike.heading) * Math.sign(bike.aLatSigned || bike.steer || 1);
+      const outZ = -Math.sin(bike.heading) * Math.sign(bike.aLatSigned || bike.steer || 1);
+      roostCarry = roost > 0 ? roostCarry + roost * 70 * dt : 0;
+      while (roostCarry >= 1) {
+        roostCarry -= 1;
+        const spray = 2 + Math.random() * 2.5;
+        spawnDust(
+          bike.x - fx * 0.575 + (Math.random() - 0.5) * 0.2,
+          bike.y + 0.1,
+          bike.z - fz * 0.575 + (Math.random() - 0.5) * 0.2,
+          outX * spray - fx * bike.v * 0.2,
+          0.8 + Math.random() * 1.4,
+          outZ * spray - fz * bike.v * 0.2,
+          0.8 + Math.random() * 0.6,
+        );
       }
       for (let i = 0; i < DUST_COUNT; i += 1) {
         if (life[i] <= 0) continue;
@@ -323,14 +378,14 @@ export function createDust(scene, terrain) {
         gravel.setMatrixAt(i, gravelDummy.matrix);
       }
 
-      if (grounded && skid > 0) {
-        gravelCarry += skid * 220 * dt;
+      if (grounded && (skid > 0 || roost > 0)) {
+        gravelCarry += (skid * 220 + roost * 120) * dt;
         const rearX = bike.x - fx * 0.575;
         const rearZ = bike.z - fz * 0.575;
         const groundY = terrain.heightAt(rearX, rearZ);
         const rightX = Math.cos(bike.heading);
         const rightZ = Math.sin(bike.heading);
-        const slideSign = Math.sign(bike.steer);
+        const slideSign = Math.sign(bike.steer) || (roost > 0 ? Math.sign(bike.aLatSigned) : 0);
         while (gravelCarry >= 1) {
           gravelCarry -= 1;
           const index = gravelCursor;

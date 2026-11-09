@@ -1357,6 +1357,7 @@ function simulate(input) {
     void getLeaderboard();
   }
   if (b.landingImpact > 0) {
+    dust.landingPuff(b, b.landingImpact);
     game.trauma = Math.min(
       1,
       game.trauma + Math.max(0, Math.min(1, (b.landingImpact - 4) / 7)),
