@@ -40,7 +40,8 @@ const RESPAWN_DELAY = 1.6;
 const queryParams = new URLSearchParams(window.location.search);
 const qualityMode = queryParams.get('quality');
 const initialQuality = qualityMode === 'low' ? 3 : 0;
-const autoQualityEnabled = qualityMode !== 'high';
+const benchMode = queryParams.has('bench');
+const autoQualityEnabled = qualityMode !== 'high' && !benchMode;
 const debug = queryParams.has('debug');
 const requestedTime = queryParams.get('time');
 const storedTime = localStorage.getItem('downhill.time');
@@ -72,7 +73,7 @@ const pickups = createPickups(terrain, obstacles);
 const world = buildWorld(scene, renderer, terrain, obstacles, pickups);
 world.setShadowQuality(initialQuality === 0);
 const post = queryParams.has('nopost')
-  ? { render: () => renderer.render(scene, camera), setSize() {}, setAO() {}, update() {} }
+  ? { render: () => renderer.render(scene, camera), setSize() {}, setAO() {}, setEffects() {}, update() {} }
   : createPost(renderer, scene, camera);
 const model = createRiderModel();
 scene.add(model.root);
@@ -1816,7 +1817,7 @@ function updateTimeScale(realDt) {
   game.timeScale += Math.max(-maxChange, Math.min(maxChange, effectiveTarget - game.timeScale));
 }
 
-const fpsMeter = queryParams.has('fps') ? document.createElement('div') : null;
+const fpsMeter = queryParams.has('fps') || benchMode ? document.createElement('div') : null;
 let fpsMeterElapsed = 0;
 let fpsMeterFrames = 0;
 if (fpsMeter) {
@@ -1827,6 +1828,54 @@ if (fpsMeter) {
 }
 
 const qualityLog = [];
+
+// ?bench: cycle render settings during a ride at 1x and log the fps of each.
+const BENCH_SETTLE = 0.75;
+const BENCH_MEASURE = 3;
+const BENCH_FULL = { quality: 0, ao: true, shadow4k: true, samples: 4, bloom: true, godRays: true };
+const BENCH_CONFIGS = [
+  { label: 'q0 full', ...BENCH_FULL },
+  { label: 'q0 no AO', ...BENCH_FULL, ao: false },
+  { label: 'q0 no AO, 2K shadow', ...BENCH_FULL, ao: false, shadow4k: false },
+  { label: '  + no MSAA', ...BENCH_FULL, ao: false, shadow4k: false, samples: 0 },
+  { label: '  + no bloom', ...BENCH_FULL, ao: false, shadow4k: false, samples: 0, bloom: false },
+  { label: '  + no god rays', ...BENCH_FULL, ao: false, shadow4k: false, samples: 0, bloom: false, godRays: false },
+  { label: 'q0 full, 2K shadow', ...BENCH_FULL, shadow4k: false },
+  { label: 'q1 (no post)', ...BENCH_FULL, quality: 1, shadow4k: false },
+  { label: 'q1, 4K shadow', ...BENCH_FULL, quality: 1 },
+];
+let benchIndex = -1;
+let benchElapsed = 0;
+let benchFrames = 0;
+
+function applyBenchConfig(index) {
+  benchIndex = index;
+  benchElapsed = 0;
+  benchFrames = 0;
+  const config = BENCH_CONFIGS[index];
+  if (!config) return;
+  level0Step = 2;
+  applyQualityLevel(config.quality);
+  world.setShadowQuality(config.shadow4k);
+  post.setEffects(config);
+}
+
+function updateBench(realDt) {
+  if (!benchMode || !assetsReady || game.mode !== 'riding' || realDt > 0.5) return;
+  if (benchIndex >= BENCH_CONFIGS.length) return;
+  if (benchIndex === -1) {
+    applyBenchConfig(0);
+    return;
+  }
+  benchElapsed += realDt;
+  if (benchElapsed < BENCH_SETTLE) return;
+  benchFrames += 1;
+  if (benchElapsed < BENCH_SETTLE + BENCH_MEASURE) return;
+  const fps = benchFrames / (benchElapsed - BENCH_SETTLE);
+  qualityLog.push(`${BENCH_CONFIGS[benchIndex].label}: ${Math.round(fps)} fps`);
+  applyBenchConfig(benchIndex + 1);
+  if (benchIndex >= BENCH_CONFIGS.length) qualityLog.push('bench done');
+}
 
 function qualityLabel() {
   const noAO = game.quality === 0 && !LEVEL0_STEPS[level0Step].ao;
@@ -1860,6 +1909,7 @@ function frame(now) {
   const paused = game.mode === 'paused';
   if (!paused) {
     updateAutoQuality(frameDt);
+    updateBench(frameDt);
     updateTimeScale(frameDt);
     accumulator += dt * game.timeScale;
   } else {

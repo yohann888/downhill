@@ -164,6 +164,16 @@ export function createPost(renderer, scene, camera) {
     render: () => composer.render(),
     setSize: (w, h) => composer.setSize(w, h),
     setAO: (enabled) => { gtao.enabled = enabled; },
+    setEffects({ ao, bloom: bloomOn, godRays: godRaysOn, samples }) {
+      gtao.enabled = ao;
+      bloom.enabled = bloomOn;
+      godRays.enabled = godRaysOn;
+      for (const rt of [composer.renderTarget1, composer.renderTarget2]) {
+        if (rt.samples === samples) continue;
+        rt.samples = samples;
+        rt.dispose();
+      }
+    },
     update({ speed, lightDir, isNight }) {
       camera.updateMatrixWorld();
       camera.getWorldDirection(cameraForward);
