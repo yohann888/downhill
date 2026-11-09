@@ -163,6 +163,7 @@ export function createPost(renderer, scene, camera) {
   return {
     render: () => composer.render(),
     setSize: (w, h) => composer.setSize(w, h),
+    setAO: (enabled) => { gtao.enabled = enabled; },
     update({ speed, lightDir, isNight }) {
       camera.updateMatrixWorld();
       camera.getWorldDirection(cameraForward);

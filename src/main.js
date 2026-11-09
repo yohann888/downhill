@@ -18,7 +18,7 @@ import {
   airTimeBonus,
   heightBonus,
   nextQualityStep,
-  LEVEL0_PIXEL_RATIOS,
+  LEVEL0_STEPS,
   slowMoTarget,
 } from './feel.js';
 import { getCommentary, getLeaderboard, postRun } from './api.js';
@@ -53,7 +53,7 @@ let timeMode = ['day', 'night'].includes(requestedTime)
 const canvas = document.getElementById('game');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(
-  initialQuality >= 3 ? 0.75 : initialQuality >= 2 ? 1 : Math.min(window.devicePixelRatio, LEVEL0_PIXEL_RATIOS[0]),
+  initialQuality >= 3 ? 0.75 : initialQuality >= 2 ? 1 : Math.min(window.devicePixelRatio, LEVEL0_STEPS[0].ratio),
 );
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = initialQuality < 2;
@@ -1751,7 +1751,7 @@ let assetsReady = false;
 let qualityWindowElapsed = 0;
 let qualityFrameCount = 0;
 let qualityWarmupWindows = 1;
-let pixelRatioStep = 0;
+let level0Step = 0;
 
 function applyQualityLevel(level) {
   game.quality = level;
@@ -1761,7 +1761,8 @@ function applyQualityLevel(level) {
     ? 0.75
     : level >= 2
       ? 1
-      : Math.min(window.devicePixelRatio, LEVEL0_PIXEL_RATIOS[pixelRatioStep]);
+      : Math.min(window.devicePixelRatio, LEVEL0_STEPS[level0Step].ratio);
+  post.setAO(LEVEL0_STEPS[level0Step].ao);
   if (renderer.getPixelRatio() !== pixelRatio) {
     renderer.setPixelRatio(pixelRatio);
     renderer.setSize(window.innerWidth, window.innerHeight);
@@ -1784,9 +1785,9 @@ function updateAutoQuality(realDt) {
   if (qualityWarmupWindows > 0) {
     qualityWarmupWindows -= 1;
   } else {
-    const step = nextQualityStep(avgFps, game.quality, pixelRatioStep, window.devicePixelRatio);
-    if (step.ratioStep !== pixelRatioStep || step.level !== game.quality) {
-      pixelRatioStep = step.ratioStep;
+    const step = nextQualityStep(avgFps, game.quality, level0Step, window.devicePixelRatio);
+    if (step.level0Step !== level0Step || step.level !== game.quality) {
+      level0Step = step.level0Step;
       applyQualityLevel(step.level);
     }
   }
@@ -1829,7 +1830,7 @@ function updateFpsMeter(realDt) {
   fpsMeterElapsed += realDt;
   fpsMeterFrames += 1;
   if (fpsMeterElapsed < 0.5) return;
-  fpsMeter.textContent = `${Math.round(fpsMeterFrames / fpsMeterElapsed)} fps | quality ${game.quality} | `
+  fpsMeter.textContent = `${Math.round(fpsMeterFrames / fpsMeterElapsed)} fps | quality ${game.quality}${game.quality === 0 && !LEVEL0_STEPS[level0Step].ao ? ' (no AO)' : ''} | `
     + `res ${renderer.getPixelRatio()}x | ${renderer.info.render.calls} draws | `
     + `${Math.round(renderer.info.render.triangles / 1000)}k tris`;
   fpsMeterElapsed = 0;
