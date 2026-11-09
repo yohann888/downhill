@@ -1789,6 +1789,7 @@ function updateAutoQuality(realDt) {
     if (step.level0Step !== level0Step || step.level !== game.quality) {
       level0Step = step.level0Step;
       applyQualityLevel(step.level);
+      qualityLog.push(`${Math.round(avgFps)} fps -> ${qualityLabel()}`);
     }
   }
   qualityWindowElapsed = 0;
@@ -1820,9 +1821,16 @@ let fpsMeterElapsed = 0;
 let fpsMeterFrames = 0;
 if (fpsMeter) {
   fpsMeter.style.cssText = 'position:fixed;top:8px;left:8px;z-index:9999;padding:4px 8px;'
-    + 'font:12px monospace;color:#fff;background:rgba(0,0,0,0.6);border-radius:4px;pointer-events:none';
+    + 'font:12px monospace;color:#fff;background:rgba(0,0,0,0.6);border-radius:4px;pointer-events:none;white-space:pre';
   document.body.appendChild(fpsMeter);
   renderer.info.autoReset = false;
+}
+
+const qualityLog = [];
+
+function qualityLabel() {
+  const noAO = game.quality === 0 && !LEVEL0_STEPS[level0Step].ao;
+  return `q${game.quality}${noAO ? ' no AO' : ''} ${renderer.getPixelRatio()}x`;
 }
 
 function updateFpsMeter(realDt) {
@@ -1832,7 +1840,8 @@ function updateFpsMeter(realDt) {
   if (fpsMeterElapsed < 0.5) return;
   fpsMeter.textContent = `${Math.round(fpsMeterFrames / fpsMeterElapsed)} fps | quality ${game.quality}${game.quality === 0 && !LEVEL0_STEPS[level0Step].ao ? ' (no AO)' : ''} | `
     + `res ${renderer.getPixelRatio()}x | ${renderer.info.render.calls} draws | `
-    + `${Math.round(renderer.info.render.triangles / 1000)}k tris`;
+    + `${Math.round(renderer.info.render.triangles / 1000)}k tris`
+    + qualityLog.map((entry) => `\n${entry}`).join('');
   fpsMeterElapsed = 0;
   fpsMeterFrames = 0;
 }
