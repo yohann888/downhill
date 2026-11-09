@@ -290,6 +290,7 @@ def generate_model(entry: dict[str, Any], force: bool = False) -> dict[str, str]
                                 "ai_model": "meshy-t2.5",
                                 "target_polycount": entry["polycount"],
                                 "target_formats": ["glb"],
+                                **entry.get("preview_options", {}),
                             },
                         )
                     )
@@ -318,6 +319,7 @@ def generate_model(entry: dict[str, Any], force: bool = False) -> dict[str, str]
                                 "enable_pbr": True,
                                 "texture_resolution": "2k",
                                 "target_formats": ["glb"],
+                                **entry.get("refine_options", {}),
                             },
                         )
                     )
