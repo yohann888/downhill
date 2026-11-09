@@ -5,6 +5,7 @@ import { createRandom, createValueNoise } from '../world/noise.js';
 import { crossProfile } from '../world/terrain.js';
 import { unitMesh } from './assets.js';
 import { createGroundMaterial, loadGroundTextures } from './ground.js';
+import { addWind, buildGroundCover, windTime } from './groundcover.js';
 import {
   createOtterStickerMaterial,
   disposeOtterMesh,
@@ -419,7 +420,10 @@ function buildTrees(terrain, obstacles) {
   );
   const foliage = new THREE.InstancedMesh(
     foliageGeometry,
-    new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9, flatShading: true }),
+    addWind(
+      new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9, flatShading: true }),
+      { height: 8.25, amplitude: 0.18, frequency: 0.8, key: 'tree-cone' },
+    ),
     placements.length,
   );
   const matrix = new THREE.Matrix4();
@@ -777,7 +781,8 @@ export function buildWorld(scene, renderer, terrain, obstacles, pickups = []) {
   const trees = buildTrees(terrain, obstacles);
   const obstacleGroup = buildObstacles(terrain, obstacles, renderer, nightMaterials);
   const pickupModels = buildPickups(terrain, pickups);
-  scene.add(trees, obstacleGroup, pickupModels.group);
+  const groundCover = buildGroundCover(terrain);
+  scene.add(trees, groundCover, obstacleGroup, pickupModels.group);
   scene.add(buildMarkers(terrain));
   const rainCount = 1500;
   const rainPositions = new Float32Array(rainCount * 2 * 3);
@@ -890,6 +895,10 @@ export function buildWorld(scene, renderer, terrain, obstacles, pickups = []) {
           material.metalness = 0;
           material.roughness = 0.95;
           material.roughnessMap = null;
+          if (!material.userData.wind) {
+            addWind(material, { height: 1, amplitude: 0.22, frequency: 0.8, key: 'pine' });
+            material.userData.wind = true;
+          }
           material.needsUpdate = true;
         }
         return model;
@@ -930,6 +939,8 @@ export function buildWorld(scene, renderer, terrain, obstacles, pickups = []) {
     update(time, cameraPosition, riderSpeed = 0, lowQuality = false) {
       obstacleGroup.userData.update(time);
       pickupModels.update(time);
+      windTime.value = performance.now() / 1000;
+      groundCover.visible = !lowQuality;
       if (rainLowQuality !== Boolean(lowQuality)) {
         rainLowQuality = Boolean(lowQuality);
         rainGeometry.setDrawRange(0, rainCount * (rainLowQuality ? 1 : 2));
