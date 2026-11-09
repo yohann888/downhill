@@ -1829,20 +1829,20 @@ if (fpsMeter) {
 
 const qualityLog = [];
 
-// ?bench: cycle render settings during a ride at 1x and log the fps of each.
+// ?bench: cycle render settings during a ride (1x unless noted) and log the fps of each.
 const BENCH_SETTLE = 0.75;
 const BENCH_MEASURE = 3;
-const BENCH_FULL = { quality: 0, ao: true, shadow4k: true, samples: 4, bloom: true, godRays: true };
+const BENCH_FULL = { quality: 0, ao: true, shadow4k: true, samples: 0, fxaa: true, bloom: true, godRays: true };
 const BENCH_CONFIGS = [
   { label: 'q0 full', ...BENCH_FULL },
+  { label: 'q0 full 1.25x', ...BENCH_FULL, step: 1 },
+  { label: 'q0 full 1.5x', ...BENCH_FULL, step: 0 },
   { label: 'q0 no AO', ...BENCH_FULL, ao: false },
-  { label: 'q0 no AO, 2K shadow', ...BENCH_FULL, ao: false, shadow4k: false },
-  { label: '  + no MSAA', ...BENCH_FULL, ao: false, shadow4k: false, samples: 0 },
-  { label: '  + no bloom', ...BENCH_FULL, ao: false, shadow4k: false, samples: 0, bloom: false },
-  { label: '  + no god rays', ...BENCH_FULL, ao: false, shadow4k: false, samples: 0, bloom: false, godRays: false },
-  { label: 'q0 full, 2K shadow', ...BENCH_FULL, shadow4k: false },
+  { label: '  + no bloom', ...BENCH_FULL, ao: false, bloom: false },
+  { label: '  + no god rays', ...BENCH_FULL, ao: false, bloom: false, godRays: false },
+  { label: 'q0 no FXAA', ...BENCH_FULL, fxaa: false },
+  { label: 'q0 old MSAA 4x', ...BENCH_FULL, samples: 4, fxaa: false },
   { label: 'q1 (no post)', ...BENCH_FULL, quality: 1, shadow4k: false },
-  { label: 'q1, 4K shadow', ...BENCH_FULL, quality: 1 },
 ];
 let benchIndex = -1;
 let benchElapsed = 0;
@@ -1854,7 +1854,7 @@ function applyBenchConfig(index) {
   benchFrames = 0;
   const config = BENCH_CONFIGS[index];
   if (!config) return;
-  level0Step = 2;
+  level0Step = config.step ?? 2;
   applyQualityLevel(config.quality);
   world.setShadowQuality(config.shadow4k);
   post.setEffects(config);
