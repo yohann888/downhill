@@ -1820,6 +1820,7 @@ if (fpsMeter) {
   fpsMeter.style.cssText = 'position:fixed;top:8px;left:8px;z-index:9999;padding:4px 8px;'
     + 'font:12px monospace;color:#fff;background:rgba(0,0,0,0.6);border-radius:4px;pointer-events:none';
   document.body.appendChild(fpsMeter);
+  renderer.info.autoReset = false;
 }
 
 function updateFpsMeter(realDt) {
@@ -1828,7 +1829,8 @@ function updateFpsMeter(realDt) {
   fpsMeterFrames += 1;
   if (fpsMeterElapsed < 0.5) return;
   fpsMeter.textContent = `${Math.round(fpsMeterFrames / fpsMeterElapsed)} fps | quality ${game.quality} | `
-    + `res ${renderer.getPixelRatio()}x`;
+    + `res ${renderer.getPixelRatio()}x | ${renderer.info.render.calls} draws | `
+    + `${Math.round(renderer.info.render.triangles / 1000)}k tris`;
   fpsMeterElapsed = 0;
   fpsMeterFrames = 0;
 }
@@ -1843,6 +1845,7 @@ function frame(now) {
   const dt = Math.min(0.1, frameDt);
   last = now;
   updateFpsMeter(frameDt);
+  if (fpsMeter) renderer.info.reset();
   const paused = game.mode === 'paused';
   if (!paused) {
     updateAutoQuality(frameDt);

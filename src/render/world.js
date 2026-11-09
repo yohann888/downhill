@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { Sky } from 'three/examples/jsm/objects/Sky.js';
+import { SimplifyModifier } from 'three/examples/jsm/modifiers/SimplifyModifier.js';
 import { OUT_OF_BOUNDS } from '../physics/constants.js';
 import { createRandom, createValueNoise } from '../world/noise.js';
 import { crossProfile } from '../world/terrain.js';
@@ -348,6 +349,32 @@ function buildRangeMesh(terrain, groundTextures) {
   return group;
 }
 
+const TREE_CHUNK_LENGTH = 50;
+const TREE_LOD_DISTANCE = 120;
+
+// The tree GLBs are quantized (KHR_mesh_quantization), which SimplifyModifier can't read directly.
+function floatGeometry(geometry) {
+  const plain = new THREE.BufferGeometry();
+  for (const name of ['position', 'normal', 'uv']) {
+    const source = geometry.getAttribute(name);
+    if (!source) continue;
+    const array = new Float32Array(source.count * source.itemSize);
+    for (let i = 0; i < source.count; i += 1) {
+      for (let k = 0; k < source.itemSize; k += 1) array[i * source.itemSize + k] = source.getComponent(i, k);
+    }
+    plain.setAttribute(name, new THREE.BufferAttribute(array, source.itemSize));
+  }
+  if (geometry.index) plain.setIndex(Array.from(geometry.index.array));
+  return plain;
+}
+
+async function simplifiedTree(geometry) {
+  const plain = floatGeometry(geometry);
+  const removed = Math.floor(plain.attributes.position.count * 0.65);
+  const lod = await new SimplifyModifier().modify(plain, removed);
+  return lod.attributes.position?.count > 0 ? lod : null;
+}
+
 function buildTrees(terrain, obstacles) {
   const random = createRandom(41);
   const variationRandom = createRandom(97);
@@ -454,26 +481,62 @@ function buildTrees(terrain, obstacles) {
     foliage.visible = false;
     variants.forEach((variant, v) => {
       if (!variant) return;
-      const mine = placements.filter((tree) => tree.variant === v);
-      if (!mine.length) return;
-      const mesh = new THREE.InstancedMesh(variant.geometry, variant.material, mine.length);
-      mine.forEach((tree, i) => {
-        position.set(tree.x, terrain.heightAt(tree.x, tree.z), tree.z);
-        quat.setFromAxisAngle(new THREE.Vector3(0, 1, 0), tree.yaw);
-        scale.set(
-          10 * tree.scale * tree.widthFactor,
-          10 * tree.scale * tree.heightFactor,
-          10 * tree.scale * tree.widthFactor,
-        );
-        matrix.compose(position, quat, scale);
-        mesh.setMatrixAt(i, matrix);
-        mesh.setColorAt(i, tree.tint);
-      });
-      mesh.instanceColor.needsUpdate = true;
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      group.add(mesh);
+      const chunks = new Map();
+      for (const tree of placements) {
+        if (tree.variant !== v) continue;
+        const chunk = Math.floor(-tree.z / TREE_CHUNK_LENGTH);
+        if (!chunks.has(chunk)) chunks.set(chunk, []);
+        chunks.get(chunk).push(tree);
+      }
+      const entries = [...chunks].map(([chunk, mine]) => ({
+        chunk,
+        mine,
+        near: addTreeChunk(variant.geometry, variant.material, mine, true),
+        far: null,
+      }));
+      lodChunks.push(...entries);
+      simplifiedTree(variant.geometry).then((lodGeometry) => {
+        if (!lodGeometry) return;
+        for (const entry of entries) {
+          entry.far = addTreeChunk(lodGeometry, variant.material, entry.mine, false);
+          entry.far.visible = false;
+          entry.far.userData.noAO = true;
+        }
+      }).catch((error) => console.warn('tree LOD simplify failed', error));
     });
+  };
+  // Chunked so each draw (main, shadow and AO passes) can be frustum culled.
+  const addTreeChunk = (geometry, material, mine, castShadow) => {
+    const mesh = new THREE.InstancedMesh(geometry, material, mine.length);
+    mine.forEach((tree, i) => {
+      position.set(tree.x, terrain.heightAt(tree.x, tree.z), tree.z);
+      quat.setFromAxisAngle(new THREE.Vector3(0, 1, 0), tree.yaw);
+      scale.set(
+        10 * tree.scale * tree.widthFactor,
+        10 * tree.scale * tree.heightFactor,
+        10 * tree.scale * tree.widthFactor,
+      );
+      matrix.compose(position, quat, scale);
+      mesh.setMatrixAt(i, matrix);
+      mesh.setColorAt(i, tree.tint);
+    });
+    mesh.instanceColor.needsUpdate = true;
+    mesh.computeBoundingSphere();
+    mesh.castShadow = castShadow;
+    mesh.receiveShadow = true;
+    group.add(mesh);
+    return mesh;
+  };
+  const lodChunks = [];
+  group.userData.lod = (cameraZ) => {
+    const cameraS = -cameraZ;
+    for (const { chunk, near, far } of lodChunks) {
+      if (!far) continue;
+      const centerS = (chunk + 0.5) * TREE_CHUNK_LENGTH;
+      const close = Math.abs(centerS - cameraS) < TREE_LOD_DISTANCE;
+      near.visible = close;
+      far.visible = !close;
+    }
   };
   return group;
 }
@@ -940,6 +1003,7 @@ export function buildWorld(scene, renderer, terrain, obstacles, pickups = []) {
       obstacleGroup.userData.update(time);
       pickupModels.update(time);
       windTime.value = performance.now() / 1000;
+      if (cameraPosition) trees.userData.lod(cameraPosition.z);
       groundCover.visible = showGroundCover;
       if (showGroundCover && cameraPosition) groundCover.userData.cull(cameraPosition.z);
       if (rainLowQuality !== Boolean(lowQuality)) {
