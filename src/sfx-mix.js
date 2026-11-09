@@ -56,3 +56,22 @@ export function treePasses(trees, prevZ, z, x, speed) {
   }
   return passes;
 }
+
+export function offTrailAmount(terrain, x, z) {
+  const outside = Math.abs(x - terrain.centerX(z)) - terrain.halfWidth(z);
+  return clamp01(outside / 1.5) * (1 - clamp01(terrain.pathWeightAt?.(x, z) ?? 0));
+}
+
+export function tireMix(level, offTrail) {
+  const off = clamp01(offTrail);
+  return {
+    gravel: level * 0.6 * (1 - off),
+    dirt: level * 0.65 * (1 - off),
+    grass: level * 0.95 * off,
+  };
+}
+
+export function pickTake(takes, last, random = Math.random) {
+  const fresh = takes.length > 1 ? takes.filter((take) => take !== last) : takes;
+  return fresh[Math.floor(random() * fresh.length)] ?? last;
+}

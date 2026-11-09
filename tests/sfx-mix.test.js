@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { crashVariant, landingSound, sortTreesByZ, treePasses } from '../src/sfx-mix.js';
+import {
+  crashVariant, landingSound, offTrailAmount, pickTake, sortTreesByZ, tireMix, treePasses,
+} from '../src/sfx-mix.js';
 
 const trees = sortTreesByZ([
   { type: 'tree', x: 2, z: -100 },
@@ -50,5 +52,36 @@ describe('crashVariant', () => {
     const high = crashVariant(() => 1);
     expect(high.rate).toBeCloseTo(1.12);
     expect(high.offset).toBeCloseTo(0.12);
+  });
+});
+
+describe('surface tires', () => {
+  const terrain = { centerX: () => 0, halfWidth: () => 3, pathWeightAt: (x) => (x > 10 ? 1 : 0) };
+
+  it('is on trail inside the half width and off trail past it', () => {
+    expect(offTrailAmount(terrain, 2, 0)).toBe(0);
+    expect(offTrailAmount(terrain, -6, 0)).toBe(1);
+    expect(offTrailAmount(terrain, 11, 0)).toBe(0);
+  });
+
+  it('crossfades dirt and gravel into grass', () => {
+    expect(tireMix(1, 0).grass).toBe(0);
+    expect(tireMix(1, 1).dirt).toBe(0);
+    expect(tireMix(1, 1).grass).toBeGreaterThan(0.9);
+  });
+});
+
+describe('voice takes', () => {
+  it('never repeats the last take', () => {
+    let last;
+    for (let i = 0; i < 50; i += 1) {
+      const take = pickTake(['a', 'b', 'c'], last);
+      expect(take).not.toBe(last);
+      last = take;
+    }
+  });
+
+  it('falls back to the only take', () => {
+    expect(pickTake(['a'], 'a')).toBe('a');
   });
 });

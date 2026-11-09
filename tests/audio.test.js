@@ -264,7 +264,7 @@ describe('createAudio context recovery', () => {
       await secondUnlock;
       audio.event('start');
       const context = FakeAudioContext.instances[0];
-      expect(context.startedBuffers.some((buffer) => buffer?.name === './assets/audio/vo-go.mp3')).toBe(true);
+      expect(context.startedBuffers.some((buffer) => /^\.\/assets\/audio\/vo-go(-[23])?\.mp3$/.test(buffer?.name))).toBe(true);
     } finally {
       await firstUnlock;
     }

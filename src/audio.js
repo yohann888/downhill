@@ -1,9 +1,11 @@
 import { parseYouTubeId } from './youtube.js';
-import { crashVariant, landingSound } from './sfx-mix.js';
+import { crashVariant, landingSound, pickTake, tireMix } from './sfx-mix.js';
 
 const BASE = './assets/audio/';
-const LOOPS = ['tire-gravel-loop', 'wind-loop', 'freewheel-loop', 'pedal-loop', 'forest-loop', 'brake-skid'];
-const ONESHOTS = ['crash', 'otter-hit', 'land', 'checkpoint', 'finish-cheer', 'vo-go', 'vo-clean', 'vo-air', 'vo-crash', 'vo-ottified', 'vo-checkpoint', 'vo-best', 'vo-send'];
+const LOOPS = ['tire-gravel-loop', 'tire-dirt-loop', 'tire-grass-loop', 'wind-loop', 'freewheel-loop', 'pedal-loop', 'forest-loop', 'brake-skid'];
+const VOICE_LINES = ['vo-go', 'vo-clean', 'vo-air', 'vo-crash', 'vo-ottified', 'vo-checkpoint', 'vo-best', 'vo-send'];
+const VOICE_TAKES = Object.fromEntries(VOICE_LINES.map((name) => [name, [name, `${name}-2`, `${name}-3`]]));
+const ONESHOTS = ['crash', 'otter-hit', 'land', 'checkpoint', 'finish-cheer', ...Object.values(VOICE_TAKES).flat()];
 const MUSIC_TRACKS = [
   { id: 'music-ride', label: 'Space trance' },
   { id: 'music-lofi', label: 'Lo-fi' },
@@ -32,6 +34,7 @@ export function createAudio() {
   let previousMusic = 'music-ride';
   let youtubePlaying = false;
   let voiceSource = null;
+  const lastTake = {};
   let reverbSend = null;
   let noiseBuffer = null;
   const buffers = {};
@@ -209,7 +212,9 @@ export function createAudio() {
     oscillator.stop(start + 0.3);
   }
 
-  function playVoice(name) {
+  function playVoice(line) {
+    const name = pickTake((VOICE_TAKES[line] || [line]).filter((take) => buffers[take]), lastTake[line]);
+    lastTake[line] = name;
     const buffer = buffers[name];
     if (!ctx || !buffer) return;
     if (voiceSource) {
@@ -474,7 +479,7 @@ export function createAudio() {
     squeak() {
       playSqueak();
     },
-    update(bike, input, riding, dt, timeScale = 1) {
+    update(bike, input, riding, dt, timeScale = 1, offTrail = 0) {
       if (!ctx) return;
       const v = riding ? bike.v : 0;
       const grounded = riding && !bike.airborne;
@@ -491,7 +496,11 @@ export function createAudio() {
         musicSource.playbackRate.setTargetAtTime(playbackRateScale, ctx.currentTime, 0.1);
       }
       setLoop('forest-loop', 0.35, playbackRateScale);
-      setLoop('tire-gravel-loop', grounded ? 0.15 + speed01 * 0.6 : 0, rate(0.8 + speed01 * 0.5));
+      const tires = tireMix(grounded ? 0.15 + speed01 * 0.6 : 0, offTrail);
+      const tireRate = rate(0.8 + speed01 * 0.5);
+      setLoop('tire-gravel-loop', tires.gravel, tireRate);
+      setLoop('tire-dirt-loop', tires.dirt, tireRate);
+      setLoop('tire-grass-loop', tires.grass, tireRate);
       setLoop('wind-loop', riding ? speed01 * speed01 * 0.8 : 0, rate(0.85 + speed01 * 0.35));
       setLoop('pedal-loop', grounded && input.throttle ? 0.45 : 0, rate(0.9 + speed01 * 0.4));
       setLoop('freewheel-loop', grounded && !input.throttle && v > 1 ? 0.18 : 0, rate(0.8 + speed01 * 0.6));
