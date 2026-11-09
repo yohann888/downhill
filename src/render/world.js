@@ -936,11 +936,12 @@ export function buildWorld(scene, renderer, terrain, obstacles, pickups = []) {
     disposeWaveOtter(mesh) {
       obstacleGroup.userData.disposeWaveOtter(mesh);
     },
-    update(time, cameraPosition, riderSpeed = 0, lowQuality = false) {
+    update(time, cameraPosition, riderSpeed = 0, lowQuality = false, showGroundCover = !lowQuality) {
       obstacleGroup.userData.update(time);
       pickupModels.update(time);
       windTime.value = performance.now() / 1000;
-      groundCover.visible = !lowQuality;
+      groundCover.visible = showGroundCover;
+      if (showGroundCover && cameraPosition) groundCover.userData.cull(cameraPosition.z);
       if (rainLowQuality !== Boolean(lowQuality)) {
         rainLowQuality = Boolean(lowQuality);
         rainGeometry.setDrawRange(0, rainCount * (rainLowQuality ? 1 : 2));

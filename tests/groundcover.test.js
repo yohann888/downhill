@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { landingPuffCount, roostAmount } from '../src/render/dust.js';
-import { groundCoverPlacements } from '../src/render/groundcover.js';
+import { chunkVisible, groundCoverPlacements } from '../src/render/groundcover.js';
 import { createTerrain } from '../src/world/terrain.js';
 
 describe('ground cover', () => {
@@ -35,5 +35,13 @@ describe('roost and landing dust', () => {
     expect(landingPuffCount(1)).toBe(8);
     expect(landingPuffCount(6)).toBeGreaterThan(landingPuffCount(3));
     expect(landingPuffCount(20)).toBe(98);
+  });
+
+  it('only draws chunks near the camera', () => {
+    expect(chunkVisible(0, -10)).toBe(true);
+    expect(chunkVisible(2, -10)).toBe(true);
+    expect(chunkVisible(3, -10)).toBe(false);
+    expect(chunkVisible(0, -100)).toBe(false);
+    expect(chunkVisible(1, -100)).toBe(true);
   });
 });
