@@ -208,7 +208,7 @@ def _save_plan_skip(metadata: dict[str, Any], sidecar: Path, error: ProviderErro
     cpu=1,
     memory=1024,
     timeout=TASK_TIMEOUT_SECONDS + 300,
-    max_containers=8,
+    max_containers=2,
 )
 def generate_model(entry: dict[str, Any], force: bool = False) -> dict[str, str]:
     volume.reload()
@@ -290,7 +290,6 @@ def generate_model(entry: dict[str, Any], force: bool = False) -> dict[str, str]
                                 "ai_model": "meshy-t2.5",
                                 "target_polycount": entry["polycount"],
                                 "target_formats": ["glb"],
-                                **entry.get("preview_options", {}),
                             },
                         )
                     )
@@ -319,7 +318,6 @@ def generate_model(entry: dict[str, Any], force: bool = False) -> dict[str, str]
                                 "enable_pbr": True,
                                 "texture_resolution": "2k",
                                 "target_formats": ["glb"],
-                                **entry.get("refine_options", {}),
                             },
                         )
                     )
@@ -377,12 +375,6 @@ def generate_model(entry: dict[str, Any], force: bool = False) -> dict[str, str]
         _write_json(sidecar, metadata)
         return {"name": name, "status": "complete"}
     except ProviderError as error:
-        if output.exists() and entry.get("rig") and "Pose estimation failed" in str(error):
-            metadata["status"] = "rig_failed"
-            metadata["rig_skip_reason"] = str(error)
-            _write_json(sidecar, metadata)
-            print(f"Rigging failed for {name}: {error}")
-            return {"name": name, "status": "rig_failed"}
         if _is_plan_rejection(error):
             if output.exists() and entry.get("rig") and not rigged_output.exists():
                 metadata["status"] = "partial"
