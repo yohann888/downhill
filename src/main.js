@@ -52,7 +52,7 @@ let timeMode = ['day', 'night'].includes(requestedTime)
 const canvas = document.getElementById('game');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(
-  initialQuality >= 3 ? 0.75 : initialQuality >= 2 ? 1 : Math.min(window.devicePixelRatio, 2),
+  initialQuality >= 3 ? 0.75 : initialQuality >= 2 ? 1 : Math.min(window.devicePixelRatio, 1.5),
 );
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = initialQuality < 2;
@@ -1751,7 +1751,8 @@ let qualityWindowElapsed = 0;
 let qualityFrameCount = 0;
 let qualityWarmupWindows = 1;
 let pixelRatioReduced = false;
-const LEVEL0_REDUCED_PIXEL_RATIO = 1.5;
+const LEVEL0_PIXEL_RATIO = 1.5;
+const LEVEL0_REDUCED_PIXEL_RATIO = 1.25;
 
 function applyQualityLevel(level) {
   game.quality = level;
@@ -1761,7 +1762,7 @@ function applyQualityLevel(level) {
     ? 0.75
     : level >= 2
       ? 1
-      : Math.min(window.devicePixelRatio, pixelRatioReduced ? LEVEL0_REDUCED_PIXEL_RATIO : 2);
+      : Math.min(window.devicePixelRatio, pixelRatioReduced ? LEVEL0_REDUCED_PIXEL_RATIO : LEVEL0_PIXEL_RATIO);
   if (renderer.getPixelRatio() !== pixelRatio) {
     renderer.setPixelRatio(pixelRatio);
     renderer.setSize(window.innerWidth, window.innerHeight);
@@ -1812,6 +1813,26 @@ function updateTimeScale(realDt) {
   game.timeScale += Math.max(-maxChange, Math.min(maxChange, effectiveTarget - game.timeScale));
 }
 
+const fpsMeter = queryParams.has('fps') ? document.createElement('div') : null;
+let fpsMeterElapsed = 0;
+let fpsMeterFrames = 0;
+if (fpsMeter) {
+  fpsMeter.style.cssText = 'position:fixed;top:8px;left:8px;z-index:9999;padding:4px 8px;'
+    + 'font:12px monospace;color:#fff;background:rgba(0,0,0,0.6);border-radius:4px;pointer-events:none';
+  document.body.appendChild(fpsMeter);
+}
+
+function updateFpsMeter(realDt) {
+  if (!fpsMeter) return;
+  fpsMeterElapsed += realDt;
+  fpsMeterFrames += 1;
+  if (fpsMeterElapsed < 0.5) return;
+  fpsMeter.textContent = `${Math.round(fpsMeterFrames / fpsMeterElapsed)} fps | quality ${game.quality} | `
+    + `res ${renderer.getPixelRatio()}x`;
+  fpsMeterElapsed = 0;
+  fpsMeterFrames = 0;
+}
+
 function renderCurrentFrame() {
   if (game.quality >= 1) renderer.render(scene, camera);
   else post.render();
@@ -1821,6 +1842,7 @@ function frame(now) {
   const frameDt = Math.max(0, (now - last) / 1000);
   const dt = Math.min(0.1, frameDt);
   last = now;
+  updateFpsMeter(frameDt);
   const paused = game.mode === 'paused';
   if (!paused) {
     updateAutoQuality(frameDt);

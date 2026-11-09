@@ -199,6 +199,7 @@ export function buildGroundCover(terrain) {
     mesh.computeBoundingSphere();
     mesh.receiveShadow = true;
     mesh.userData.chunk = Number(key.split(':')[1]);
+    mesh.userData.noAO = true;
     group.add(mesh);
   }
   group.userData.cull = (cameraZ) => {

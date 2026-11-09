@@ -122,7 +122,7 @@ export function createPost(renderer, scene, camera) {
     distanceExponent: 1,
     thickness: 1,
     scale: 1,
-    samples: 12,
+    samples: 8,
     distanceFallOff: 1,
     screenSpaceRadius: false,
   });
