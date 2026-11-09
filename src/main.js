@@ -72,7 +72,7 @@ const pickups = createPickups(terrain, obstacles);
 const world = buildWorld(scene, renderer, terrain, obstacles, pickups);
 world.setShadowQuality(initialQuality === 0);
 const post = queryParams.has('nopost')
-  ? { render: () => renderer.render(scene, camera), setSize() {}, update() {} }
+  ? { render: () => renderer.render(scene, camera), setSize() {}, setAO() {}, update() {} }
   : createPost(renderer, scene, camera);
 const model = createRiderModel();
 scene.add(model.root);
