@@ -4,6 +4,7 @@ import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.j
 import { applyPickup, createBike, stepBike } from './physics/bike.js';
 import { DT } from './physics/constants.js';
 import { createObstacles, updateMovingObstacles } from './world/obstacles.js';
+import { offTrailAmount, sortTreesByZ, treePasses } from './sfx-mix.js';
 import { createTerrain } from './world/terrain.js';
 import { createPickups, PICKUP_RADIUS, PICKUP_REACH } from './world/pickups.js';
 import { buildWorld } from './render/world.js';
@@ -64,6 +65,7 @@ const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerH
 
 const terrain = createTerrain();
 const obstacles = createObstacles(terrain);
+const whooshTrees = sortTreesByZ(obstacles);
 let dodgeTracker = createDodgeTracker();
 const pickups = createPickups(terrain, obstacles);
 const world = buildWorld(scene, renderer, terrain, obstacles, pickups);
@@ -1311,8 +1313,12 @@ function simulate(input) {
   }
   if (game.mode !== 'riding') return;
   const wasAir = b.airborne;
+  const prevZ = b.z;
   updateMovingObstacles(obstacles, game.time);
   stepBike(b, input, terrain, obstacles, DT);
+  if (!b.crashed) {
+    for (const pass of treePasses(whooshTrees, prevZ, b.z, b.x, b.v)) audio.event('whoosh', pass);
+  }
   if (b.airborne && b.doubleJumped) game.airDoubleJumped = true;
   if (!b.crashed) {
     pickups.forEach((pickup, index) => {
@@ -1370,7 +1376,7 @@ function simulate(input) {
     if (kicker) audio.event('kicker', b.v);
   }
   if (wasAir && !b.airborne && !b.crashed) {
-    audio.event('land');
+    audio.event('land', b.landingImpact);
     const air = game.airDoubleJumped ? 0 : airTimeBonus(game.airTime);
     const height = heightBonus(game.airPeak);
     const bonus = Math.round((air + height) * 10) / 10;
@@ -1862,7 +1868,7 @@ function frame(now) {
   world.followSun(model.root.position);
   world.update(game.time, camera.position, game.bike.v, game.quality >= 2);
   dust.update(game.bike, game.mode === 'riding', paused ? 0 : dt);
-  audio.update(game.bike, input, game.mode === 'riding', paused ? 0 : dt, game.timeScale);
+  audio.update(game.bike, input, game.mode === 'riding', paused ? 0 : dt, game.timeScale, offTrailAmount(terrain, game.bike.x, game.bike.z));
   updateCamera(paused ? 0 : dt);
   updateHud();
   post.update({

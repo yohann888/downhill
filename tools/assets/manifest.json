@@ -26,7 +26,9 @@
     { "name": "land", "prompt": "mountain bike landing a jump on packed dirt, suspension thud", "seconds": 1 },
     { "name": "checkpoint", "prompt": "short bright ding, video game checkpoint chime", "seconds": 1 },
     { "name": "finish-cheer", "prompt": "small crowd cheering with cowbells at a mountain bike race finish line", "seconds": 4 },
-    { "name": "forest-loop", "prompt": "alpine forest ambience, distant birds, light breeze in pine trees", "seconds": 10, "loop": true }
+    { "name": "forest-loop", "prompt": "alpine forest ambience, distant birds, light breeze in pine trees", "seconds": 10, "loop": true },
+    { "name": "tire-dirt-loop", "prompt": "mountain bike knobby tires rolling fast on smooth packed loamy dirt singletrack, soft continuous tread hum, no gravel, no wind", "seconds": 6, "loop": true },
+    { "name": "tire-grass-loop", "prompt": "mountain bike tires rolling fast through long dry grass and brush, swishing stalks against the bike, soft ground, continuous, no wind", "seconds": 6, "loop": true }
   ],
   "music": [
     { "name": "music-ride", "label": "Space trance", "prompt": "epic cinematic space opera orchestral theme with soaring French horn and brass fanfare, sweeping strings and choir, fused with uplifting 138 BPM progressive trance, supersaw lead, rolling bassline, driving four on the floor kick, a big build and euphoric drop, instrumental, no vocals", "seconds": 90 },
@@ -37,6 +39,7 @@
   ],
   "voice": {
     "style": "energetic male sports commentator",
+    "voice_id": "TX3LPaxmHKxFdv7VOQHJ",
     "lines": [
       { "name": "vo-go", "text": "Let's go!" },
       { "name": "vo-clean", "text": "Clean line!" },
@@ -45,7 +48,23 @@
       { "name": "vo-ottified", "text": "Ottified!" },
       { "name": "vo-checkpoint", "text": "Checkpoint!" },
       { "name": "vo-best", "text": "New personal best!" },
-      { "name": "vo-send", "text": "Send it!" }
+      { "name": "vo-send", "text": "Send it!" },
+      { "name": "vo-go-2", "text": "Here we go!" },
+      { "name": "vo-go-3", "text": "Drop in!" },
+      { "name": "vo-clean-2", "text": "So clean!" },
+      { "name": "vo-clean-3", "text": "Smooth line!" },
+      { "name": "vo-air-2", "text": "Look at that air!" },
+      { "name": "vo-air-3", "text": "Up and over!" },
+      { "name": "vo-crash-2", "text": "Oof, that's a big one." },
+      { "name": "vo-crash-3", "text": "Yard sale!" },
+      { "name": "vo-ottified-2", "text": "Otter attack!" },
+      { "name": "vo-ottified-3", "text": "Watch the otter!" },
+      { "name": "vo-checkpoint-2", "text": "Through the gate!" },
+      { "name": "vo-checkpoint-3", "text": "Checkpoint, keep rolling!" },
+      { "name": "vo-best-2", "text": "That's a new record!" },
+      { "name": "vo-best-3", "text": "Fastest run yet!" },
+      { "name": "vo-send-2", "text": "Full send!" },
+      { "name": "vo-send-3", "text": "Send it big!" }
     ]
   }
 }

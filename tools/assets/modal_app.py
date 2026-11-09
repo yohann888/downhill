@@ -544,8 +544,7 @@ def generate_voice(entry: dict[str, Any], force: bool = False) -> dict[str, str]
         return {"name": entry["name"], "status": "skipped"}
 
     headers = _headers("ElevenLabs")
-    voice = _select_stock_voice(entry["style"], headers)
-    voice_id = voice["voice_id"]
+    voice_id = entry.get("voice_id") or _select_stock_voice(entry["style"], headers)["voice_id"]
     body = {
         "text": entry["text"],
         "model_id": "eleven_multilingual_v2",
@@ -571,7 +570,7 @@ def main(kind: str, only: str = "", force: bool = False) -> None:
         "sfx": manifest["sfx"],
         "music": manifest["music"],
         "voice": [
-            {**line, "style": voice["style"]}
+            {**line, "style": voice["style"], "voice_id": voice.get("voice_id")}
             for line in voice["lines"]
         ],
     }
