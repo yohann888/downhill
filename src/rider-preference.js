@@ -5,7 +5,7 @@ export const RIDER_OPTIONS = [
 
 export const DEFAULT_RIDER = 'red';
 
-export function validRider(value) {
+function validRider(value) {
   return RIDER_OPTIONS.some((option) => option.id === value);
 }
 
