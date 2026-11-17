@@ -394,7 +394,6 @@ export function stepBike(state, input, terrain, obstacles, dt) {
         distance,
         hasEllipse,
         ex,
-        ez,
         q,
         contactDistance,
         intersects,
