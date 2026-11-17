@@ -1,7 +1,7 @@
 const clamp01 = (value) => Math.min(1, Math.max(0, value));
 
-export const WHOOSH_RANGE = 4.5;
-export const WHOOSH_MIN_SPEED = 7;
+const WHOOSH_RANGE = 4.5;
+const WHOOSH_MIN_SPEED = 7;
 
 export function landingSound(impact) {
   const heavy = clamp01((impact - 3) / 8);
