@@ -22,7 +22,7 @@ import {
   slowMoTarget,
 } from './feel.js';
 import { getCommentary, getLeaderboard, postRun } from './api.js';
-import { buildRankOverlayRows, cleanText, displayName, rivalLine } from './leaderboard.js';
+import { buildRankOverlayRows, displayName, rivalLine } from './leaderboard.js';
 import { createRecorder, sampleGhost } from './ghost.js';
 import { getEditableKeyboardTarget } from './keyboard.js';
 import { savePhoto } from './photo.js';
